@@ -18,10 +18,12 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
-    email_verified BOOLEAN DEFAULT FALSE,
-    INDEX idx_email (email),
-    INDEX idx_username (username)
+    email_verified BOOLEAN DEFAULT FALSE
 );
+
+-- Indexes for users table
+CREATE INDEX idx_email ON users(email);
+CREATE INDEX idx_username ON users(username);
 
 -- ============================================================================
 -- PROVIDERS TABLE (Storage Companies)
@@ -48,12 +50,13 @@ CREATE TABLE providers (
     -- For scraping
     source_url VARCHAR(500), -- URL where we scrape this provider's auctions
     last_scraped_at TIMESTAMP,
-    scrape_frequency_hours INT DEFAULT 24,
-    
-    INDEX idx_state (state),
-    INDEX idx_city_state (city, state),
-    INDEX idx_active (is_active)
+    scrape_frequency_hours INT DEFAULT 24
 );
+
+-- Indexes for providers table
+CREATE INDEX idx_providers_state ON providers(state);
+CREATE INDEX idx_providers_city_state ON providers(city, state);
+CREATE INDEX idx_providers_active ON providers(is_active);
 
 -- ============================================================================
 -- AUCTIONS TABLE
@@ -110,18 +113,19 @@ CREATE TABLE auctions (
     ai_description TEXT, -- AI-generated description of unit contents
     ai_analyzed_at TIMESTAMP, -- When AI analysis was performed
     ai_confidence_score DECIMAL(3, 2), -- Confidence score from AI (0.00 to 1.00)
-    
+
     FOREIGN KEY (provider_id) REFERENCES providers(provider_id) ON DELETE CASCADE,
-    FOREIGN KEY (winner_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
-    
-    INDEX idx_provider (provider_id),
-    INDEX idx_closes_at (closes_at),
-    INDEX idx_status (status),
-    INDEX idx_state (state),
-    INDEX idx_city_state (city, state),
-    INDEX idx_location (latitude, longitude),
-    INDEX idx_active_auctions (status, closes_at) -- For finding open auctions
+    FOREIGN KEY (winner_user_id) REFERENCES users(user_id) ON DELETE SET NULL
 );
+
+-- Indexes for auctions table
+CREATE INDEX idx_auctions_provider ON auctions(provider_id);
+CREATE INDEX idx_auctions_closes_at ON auctions(closes_at);
+CREATE INDEX idx_auctions_status ON auctions(status);
+CREATE INDEX idx_auctions_state ON auctions(state);
+CREATE INDEX idx_auctions_city_state ON auctions(city, state);
+CREATE INDEX idx_auctions_location ON auctions(latitude, longitude);
+CREATE INDEX idx_auctions_active_auctions ON auctions(status, closes_at); -- For finding open auctions
 
 -- ============================================================================
 -- AUCTION_TAGS TABLE
@@ -134,11 +138,12 @@ CREATE TABLE tags (
     color VARCHAR(7), -- Hex color code for UI display
     icon VARCHAR(50), -- Icon name for UI
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    usage_count INT DEFAULT 0, -- Denormalized count for performance
-    
-    INDEX idx_tag_name (tag_name),
-    INDEX idx_tag_slug (tag_slug)
+    usage_count INT DEFAULT 0 -- Denormalized count for performance
 );
+
+-- Indexes for tags table
+CREATE INDEX idx_tags_tag_name ON tags(tag_name);
+CREATE INDEX idx_tags_tag_slug ON tags(tag_slug);
 
 -- Junction table for many-to-many relationship
 CREATE TABLE auction_tags (
@@ -155,12 +160,14 @@ CREATE TABLE auction_tags (
     FOREIGN KEY (auction_id) REFERENCES auctions(auction_id) ON DELETE CASCADE,
     FOREIGN KEY (tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE,
     FOREIGN KEY (added_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
-    
-    UNIQUE (auction_id, tag_id),
-    INDEX idx_auction (auction_id),
-    INDEX idx_tag (tag_id),
-    INDEX idx_source (source)
+
+    UNIQUE (auction_id, tag_id)
 );
+
+-- Indexes for auction_tags table
+CREATE INDEX idx_auction_tags_auction ON auction_tags(auction_id);
+CREATE INDEX idx_auction_tags_tag ON auction_tags(tag_id);
+CREATE INDEX idx_auction_tags_source ON auction_tags(source);
 
 -- ============================================================================
 -- BIDS TABLE
@@ -183,16 +190,17 @@ CREATE TABLE bids (
     -- Metadata
     ip_address VARCHAR(45), -- For fraud prevention
     user_agent TEXT,
-    
+
     FOREIGN KEY (auction_id) REFERENCES auctions(auction_id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    
-    INDEX idx_auction (auction_id),
-    INDEX idx_user (user_id),
-    INDEX idx_auction_user (auction_id, user_id),
-    INDEX idx_bid_time (bid_time),
-    INDEX idx_winning (is_winning)
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
+
+-- Indexes for bids table
+CREATE INDEX idx_bids_auction ON bids(auction_id);
+CREATE INDEX idx_bids_user ON bids(user_id);
+CREATE INDEX idx_bids_auction_user ON bids(auction_id, user_id);
+CREATE INDEX idx_bids_bid_time ON bids(bid_time);
+CREATE INDEX idx_bids_winning ON bids(is_winning);
 
 -- ============================================================================
 -- WATCHLIST TABLE (Users can watch auctions)
@@ -204,14 +212,16 @@ CREATE TABLE watchlist (
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     notify_before_closing BOOLEAN DEFAULT TRUE,
     notify_minutes_before INT DEFAULT 60,
-    
+
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
     FOREIGN KEY (auction_id) REFERENCES auctions(auction_id) ON DELETE CASCADE,
-    
-    UNIQUE (user_id, auction_id),
-    INDEX idx_user (user_id),
-    INDEX idx_auction (auction_id)
+
+    UNIQUE (user_id, auction_id)
 );
+
+-- Indexes for watchlist table
+CREATE INDEX idx_watchlist_user ON watchlist(user_id);
+CREATE INDEX idx_watchlist_auction ON watchlist(auction_id);
 
 -- ============================================================================
 -- SCRAPE_LOGS TABLE (Track scraping activity)
@@ -226,13 +236,14 @@ CREATE TABLE scrape_logs (
     auctions_added INT DEFAULT 0,
     auctions_updated INT DEFAULT 0,
     error_message TEXT,
-    
-    FOREIGN KEY (provider_id) REFERENCES providers(provider_id) ON DELETE CASCADE,
-    
-    INDEX idx_provider (provider_id),
-    INDEX idx_status (status),
-    INDEX idx_started_at (scrape_started_at)
+
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id) ON DELETE CASCADE
 );
+
+-- Indexes for scrape_logs table
+CREATE INDEX idx_scrape_logs_provider ON scrape_logs(provider_id);
+CREATE INDEX idx_scrape_logs_status ON scrape_logs(status);
+CREATE INDEX idx_scrape_logs_started_at ON scrape_logs(scrape_started_at);
 
 -- ============================================================================
 -- NOTIFICATIONS TABLE (User notifications)
@@ -245,18 +256,19 @@ CREATE TABLE notifications (
     type VARCHAR(50) NOT NULL, -- outbid, auction_ending, auction_won, auction_lost
     title VARCHAR(255) NOT NULL,
     message TEXT,
-    
+
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     read_at TIMESTAMP,
-    
+
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (auction_id) REFERENCES auctions(auction_id) ON DELETE CASCADE,
-    
-    INDEX idx_user (user_id),
-    INDEX idx_unread (user_id, is_read),
-    INDEX idx_created_at (created_at)
+    FOREIGN KEY (auction_id) REFERENCES auctions(auction_id) ON DELETE CASCADE
 );
+
+-- Indexes for notifications table
+CREATE INDEX idx_notifications_user ON notifications(user_id);
+CREATE INDEX idx_notifications_unread ON notifications(user_id, is_read);
+CREATE INDEX idx_notifications_created_at ON notifications(created_at);
 
 -- ============================================================================
 -- USEFUL VIEWS
