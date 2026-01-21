@@ -20,6 +20,10 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 import json
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Import our helper modules
 # from image_analysis_geocoding import GeocodeService, ImageAnalysisService
