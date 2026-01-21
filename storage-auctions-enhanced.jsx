@@ -14,8 +14,69 @@ const StorageAuctionApp = () => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
 
-  // Mock data - will be replaced with backend API calls
+  // Fetch data from backend API
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch auctions
+        const auctionsResponse = await fetch('http://ddev.us:5000/api/auctions');
+        const auctionsData = await auctionsResponse.json();
+
+        if (auctionsData.success) {
+          // Map backend data to frontend format
+          const mappedAuctions = auctionsData.auctions.map(auction => ({
+            id: auction.auction_id,
+            unitNumber: auction.unit_number,
+            provider: auction.provider_name,
+            city: auction.city,
+            state: auction.state,
+            zipCode: auction.zip_code,
+            address: `${auction.address_line1 || ''}, ${auction.city}, ${auction.state} ${auction.zip_code}`,
+            latitude: auction.latitude,
+            longitude: auction.longitude,
+            closingDate: auction.closes_at,
+            currentBid: parseFloat(auction.current_bid) || 0,
+            minimumBid: parseFloat(auction.minimum_bid) || 0,
+            bidIncrement: parseFloat(auction.bid_increment) || 25,
+            unitSize: auction.unit_size,
+            description: auction.description || 'No description available',
+            aiDescription: auction.ai_description || '',
+            imageUrls: auction.image_urls || [],
+            totalBids: auction.total_bids || 0,
+            tags: auction.tags || [],
+            bidHistory: []
+          }));
+
+          setAuctions(mappedAuctions);
+          setFilteredAuctions(mappedAuctions);
+
+          // Extract all unique tags
+          const tags = [...new Set(mappedAuctions.flatMap(a => a.tags))];
+          setAllTags(tags);
+        }
+
+        // Fetch tags
+        const tagsResponse = await fetch('http://ddev.us:5000/api/tags');
+        const tagsData = await tagsResponse.json();
+
+        if (tagsData.success && tagsData.tags.length > 0) {
+          const tagNames = tagsData.tags.map(t => t.tag_name);
+          setAllTags(tagNames);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        // Fall back to empty state
+        setAuctions([]);
+        setFilteredAuctions([]);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // OLD MOCK DATA BELOW (keeping for reference, but not used)
+  useEffect(() => {
+    return; // This effect is disabled
     const mockAuctions = [
       {
         id: 1,

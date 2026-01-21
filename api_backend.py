@@ -12,7 +12,7 @@ Environment Variables (create .env file):
     HUGGINGFACE_API_TOKEN=your-token
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -29,7 +29,7 @@ load_dotenv()
 # from image_analysis_geocoding import GeocodeService, ImageAnalysisService
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.')
 CORS(app)  # Enable CORS for React frontend
 
 # Configuration
@@ -45,6 +45,26 @@ def get_db_connection():
     """Create database connection"""
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
+
+
+# ============================================================================
+# Frontend Routes
+# ============================================================================
+
+@app.route('/')
+def serve_frontend():
+    """Serve the React frontend"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serve static files (JSX, etc.)"""
+    if path and os.path.exists(path):
+        return send_from_directory('.', path)
+    # If file doesn't exist, return 404 JSON for API routes, or index.html for others
+    if path.startswith('api/'):
+        return jsonify({'error': 'Not found'}), 404
+    return send_from_directory('.', 'index.html')
 
 
 # ============================================================================
