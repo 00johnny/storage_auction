@@ -18,8 +18,11 @@ const StorageAuctionApp = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Get API base URL from injected config
+        const apiBaseUrl = window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000';
+
         // Fetch auctions
-        const auctionsResponse = await fetch('http://ddev.us:5000/api/auctions');
+        const auctionsResponse = await fetch(`${apiBaseUrl}/api/auctions`);
         const auctionsData = await auctionsResponse.json();
 
         if (auctionsData.success) {
@@ -56,7 +59,7 @@ const StorageAuctionApp = () => {
         }
 
         // Fetch tags
-        const tagsResponse = await fetch('http://ddev.us:5000/api/tags');
+        const tagsResponse = await fetch(`${apiBaseUrl}/api/tags`);
         const tagsData = await tagsResponse.json();
 
         if (tagsData.success && tagsData.tags.length > 0) {

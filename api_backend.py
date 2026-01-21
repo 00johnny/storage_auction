@@ -12,7 +12,7 @@ Environment Variables (create .env file):
     HUGGINGFACE_API_TOKEN=your-token
 """
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, render_template
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -35,6 +35,7 @@ CORS(app)  # Enable CORS for React frontend
 # Configuration
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost/storage_auctions')
+API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:5000')
 
 
 # ============================================================================
@@ -53,8 +54,8 @@ def get_db_connection():
 
 @app.route('/')
 def serve_frontend():
-    """Serve the React frontend"""
-    return send_from_directory('.', 'index.html')
+    """Serve the React frontend with injected configuration"""
+    return render_template('index.html', api_base_url=API_BASE_URL)
 
 @app.route('/<path:path>')
 def serve_static(path):

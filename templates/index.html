@@ -15,6 +15,13 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
+    <!-- App Configuration (injected from Flask) -->
+    <script>
+        window.APP_CONFIG = {
+            API_BASE_URL: "{{ api_base_url }}"
+        };
+    </script>
+
     <style>
         body {
             margin: 0;
