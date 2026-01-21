@@ -800,4 +800,4 @@ const StorageAuctionApp = () => {
   );
 };
 
-export default StorageAuctionApp;
+// No export needed - component is globally available in browser
