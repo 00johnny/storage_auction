@@ -1,5 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Clock, DollarSign, Package, Search, Filter, X, Tag, Eye, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+// Browser-compatible version - no imports needed, using global React
+const { useState, useEffect, useRef } = React;
+
+// Simple icon components using SVG
+const MapPin = () => <span>📍</span>;
+const Clock = () => <span>⏰</span>;
+const DollarSign = () => <span>💰</span>;
+const Package = () => <span>📦</span>;
+const Search = () => <span>🔍</span>;
+const Filter = () => <span>🔽</span>;
+const X = () => <span>✖</span>;
+const Tag = () => <span>🏷️</span>;
+const Eye = () => <span>👁️</span>;
+const ChevronLeft = () => <span>◀</span>;
+const ChevronRight = () => <span>▶</span>;
+const ImageIcon = () => <span>🖼️</span>;
 
 const StorageAuctionApp = () => {
   const [auctions, setAuctions] = useState([]);
