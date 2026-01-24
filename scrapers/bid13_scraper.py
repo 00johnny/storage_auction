@@ -6,7 +6,7 @@ Scrapes storage auction data from bid13.com
 
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict
 from .base_scraper import BaseScraper
 
@@ -25,6 +25,46 @@ class Bid13Scraper(BaseScraper):
         super().__init__(provider_id)
         self.facility_url = facility_url
         self.base_url = 'https://bid13.com/'
+
+    def _parse_countdown_timer(self, countdown_elem) -> datetime:
+        """
+        Parse countdown timer from HTML elements
+
+        Extracts days, hours, minutes, seconds from the countdown display
+        and calculates the end time.
+
+        Args:
+            countdown_elem: BeautifulSoup element containing countdown timer
+
+        Returns:
+            datetime object for when auction closes, or None if parsing fails
+        """
+        try:
+            days_elem = countdown_elem.find('div', class_='time-days')
+            hours_elem = countdown_elem.find('div', class_='time-hours')
+            minutes_elem = countdown_elem.find('div', class_='time-minutes')
+            seconds_elem = countdown_elem.find('div', class_='time-seconds')
+
+            days = int(days_elem.text.strip()) if days_elem else 0
+            hours = int(hours_elem.text.strip()) if hours_elem else 0
+            minutes = int(minutes_elem.text.strip()) if minutes_elem else 0
+            seconds = int(seconds_elem.text.strip()) if seconds_elem else 0
+
+            # Calculate end time from now
+            time_remaining = timedelta(
+                days=days,
+                hours=hours,
+                minutes=minutes,
+                seconds=seconds
+            )
+
+            closes_at = datetime.now() + time_remaining
+
+            return closes_at
+
+        except (ValueError, AttributeError) as e:
+            print(f"Warning: Could not parse countdown timer: {e}")
+            return None
 
     def scrape_all(self) -> List[Dict]:
         """
@@ -85,9 +125,11 @@ class Bid13Scraper(BaseScraper):
         countdown_elem = auction.find('div', class_='countdown')
         end_time_str = countdown_elem.get("data-expiry") if countdown_elem else None
 
-        # Parse end time (try multiple formats)
+        # Parse end time (try multiple methods)
         closes_at = None
-        if end_time_str:
+
+        # Method 1: Try data-expiry attribute
+        if end_time_str and end_time_str.strip():
             # Try different datetime formats
             formats = [
                 '%Y-%m-%d %H:%M:%S',           # 2026-01-25 15:30:00
@@ -110,9 +152,15 @@ class Bid13Scraper(BaseScraper):
                 except Exception as e:
                     print(f"Warning: Could not parse end time '{end_time_str}': {e}")
 
+        # Method 2: If data-expiry is empty, try countdown timer
+        if not closes_at and countdown_elem:
+            closes_at = self._parse_countdown_timer(countdown_elem)
+            if closes_at:
+                print(f"Parsed end time from countdown timer for auction {external_id}: {closes_at}")
+
         # Skip auctions without end time - they're not useful
         if not closes_at:
-            print(f"Skipping auction {external_id} - no valid end time (got: {end_time_str})")
+            print(f"Skipping auction {external_id} - no valid end time (data-expiry: '{end_time_str}', countdown: not found)")
             return None
 
         # Extract address if available
