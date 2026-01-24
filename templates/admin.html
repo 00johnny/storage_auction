@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal - Storage Auction Platform</title>
+
+    <!-- React and ReactDOM from CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel for JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- App Configuration (injected from Flask) -->
+    <script>
+        // Make React available globally
+        window.React = React;
+        window.useState = React.useState;
+        window.useEffect = React.useEffect;
+        window.useRef = React.useRef;
+
+        window.APP_CONFIG = {
+            API_BASE_URL: "{{ api_base_url }}"
+        };
+    </script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+    const { useState, useEffect } = React;
+    const API_BASE_URL = window.APP_CONFIG.API_BASE_URL;
+
+    const AdminPortal = () => {
+        const [activeTab, setActiveTab] = useState('providers');
+        const [providers, setProviders] = useState([]);
+        const [scrapeLogs, setScrapeLogs] = useState([]);
+        const [selectedProvider, setSelectedProvider] = useState(null);
+        const [isEditing, setIsEditing] = useState(false);
+        const [formData, setFormData] = useState({});
+
+        // Fetch providers
+        useEffect(() => {
+            fetch(`${API_BASE_URL}/api/providers?active_only=false`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        setProviders(data.providers);
+                    }
+                });
+        }, []);
+
+        const createProvider = () => {
+            setFormData({
+                name: '',
+                city: '',
+                state: 'CA',
+                zip_code: '',
+                website: '',
+                source_url: '',
+                scrape_frequency_hours: 24,
+                is_active: true
+            });
+            setIsEditing(true);
+            setSelectedProvider(null);
+        };
+
+        const editProvider = (provider) => {
+            setFormData(provider);
+            setIsEditing(true);
+            setSelectedProvider(provider);
+        };
+
+        const saveProvider = async () => {
+            const url = selectedProvider
+                ? `${API_BASE_URL}/api/providers/${selectedProvider.provider_id}`
+                : `${API_BASE_URL}/api/providers`;
+
+            const method = selectedProvider ? 'PUT' : 'POST';
+
+            const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert(selectedProvider ? 'Provider updated!' : 'Provider created!');
+                setIsEditing(false);
+                // Refresh providers list
+                window.location.reload();
+            } else {
+                alert('Error: ' + result.error);
+            }
+        };
+
+        const deleteProvider = async (providerId) => {
+            if (!confirm('Are you sure you want to delete this provider?')) return;
+
+            const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert('Provider deleted!');
+                window.location.reload();
+            } else {
+                alert('Error: ' + result.error);
+            }
+        };
+
+        const triggerScrape = async (providerId) => {
+            if (!confirm('Start scraping this provider?')) return;
+
+            const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}/scrape`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ full_scrape: true })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const sr = result.scrape_result;
+                alert(`Scrape complete!\nFound: ${sr.auctions_found}\nAdded: ${sr.auctions_added}\nUpdated: ${sr.auctions_updated}`);
+            } else {
+                alert('Scrape failed: ' + result.error);
+            }
+        };
+
+        return (
+            <div className="min-h-screen bg-gray-100">
+                <nav className="bg-blue-600 text-white shadow-lg">
+                    <div className="container mx-auto px-4 py-4">
+                        <h1 className="text-2xl font-bold">⚙️ Storage Auction Admin Portal</h1>
+                    </div>
+                </nav>
+
+                <div className="container mx-auto px-4 py-8">
+                    {/* Tabs */}
+                    <div className="mb-6 border-b border-gray-300">
+                        <button
+                            onClick={() => setActiveTab('providers')}
+                            className={`px-6 py-3 font-semibold ${activeTab === 'providers' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+                        >
+                            Providers
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('logs')}
+                            className={`px-6 py-3 font-semibold ${activeTab === 'logs' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+                        >
+                            Scrape Logs
+                        </button>
+                        <a href="/" className="px-6 py-3 font-semibold text-gray-600 hover:text-blue-600 float-right">
+                            ← Back to Frontend
+                        </a>
+                    </div>
+
+                    {/* Providers Tab */}
+                    {activeTab === 'providers' && (
+                        <div>
+                            <div className="mb-6 flex justify-between items-center">
+                                <h2 className="text-2xl font-bold">Providers ({providers.length})</h2>
+                                <button
+                                    onClick={createProvider}
+                                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                                >
+                                    ➕ Add Provider
+                                </button>
+                            </div>
+
+                            {/* Provider List */}
+                            <div className="bg-white rounded-lg shadow overflow-hidden">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 border-b">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Active Auctions</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scrape Freq</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {providers.map(provider => (
+                                            <tr key={provider.provider_id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm font-medium text-gray-900">{provider.name}</div>
+                                                    <div className="text-xs text-gray-500">{provider.website || 'No website'}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {provider.city}, {provider.state}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {provider.active_auctions}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {provider.scrape_frequency_hours}h
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 text-xs font-semibold rounded ${provider.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                        {provider.is_active ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm space-x-2">
+                                                    <button
+                                                        onClick={() => editProvider(provider)}
+                                                        className="text-blue-600 hover:text-blue-900"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => triggerScrape(provider.provider_id)}
+                                                        className="text-green-600 hover:text-green-900"
+                                                    >
+                                                        Scrape
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteProvider(provider.provider_id)}
+                                                        className="text-red-600 hover:text-red-900"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Logs Tab */}
+                    {activeTab === 'logs' && (
+                        <div>
+                            <h2 className="text-2xl font-bold mb-6">Scrape Logs</h2>
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <p className="text-gray-600">Scrape logs viewer - Coming soon!</p>
+                                <p className="text-sm text-gray-500 mt-2">Will display scraping history, errors, and statistics.</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Edit/Create Modal */}
+                {isEditing && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto p-6">
+                            <h3 className="text-xl font-bold mb-4">
+                                {selectedProvider ? 'Edit Provider' : 'Create Provider'}
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Name *</label>
+                                    <input
+                                        type="text"
+                                        value={formData.name || ''}
+                                        onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        required
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">City *</label>
+                                        <input
+                                            type="text"
+                                            value={formData.city || ''}
+                                            onChange={(e) => setFormData({...formData, city: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">State *</label>
+                                        <input
+                                            type="text"
+                                            value={formData.state || ''}
+                                            onChange={(e) => setFormData({...formData, state: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Zip Code *</label>
+                                        <input
+                                            type="text"
+                                            value={formData.zip_code || ''}
+                                            onChange={(e) => setFormData({...formData, zip_code: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Website</label>
+                                    <input
+                                        type="url"
+                                        value={formData.website || ''}
+                                        onChange={(e) => setFormData({...formData, website: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Source URL (for scraping)</label>
+                                    <input
+                                        type="url"
+                                        value={formData.source_url || ''}
+                                        onChange={(e) => setFormData({...formData, source_url: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Scrape Frequency (hours)</label>
+                                    <input
+                                        type="number"
+                                        value={formData.scrape_frequency_hours || 24}
+                                        onChange={(e) => setFormData({...formData, scrape_frequency_hours: parseInt(e.target.value)})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                    />
+                                </div>
+
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.is_active || false}
+                                        onChange={(e) => setFormData({...formData, is_active: e.target.checked})}
+                                        className="h-4 w-4 text-blue-600 rounded"
+                                    />
+                                    <label className="ml-2 block text-sm text-gray-900">Active</label>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 flex justify-end space-x-3">
+                                <button
+                                    onClick={() => setIsEditing(false)}
+                                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={saveProvider}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<AdminPortal />);
+    </script>
+</body>
+</html>

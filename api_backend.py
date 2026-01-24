@@ -57,6 +57,11 @@ def serve_frontend():
     """Serve the React frontend with injected configuration"""
     return render_template('index.html', api_base_url=API_BASE_URL)
 
+@app.route('/admin')
+def serve_admin():
+    """Serve the admin portal"""
+    return render_template('admin.html', api_base_url=API_BASE_URL)
+
 @app.route('/<path:path>')
 def serve_static(path):
     """Serve static files (JSX, etc.)"""
@@ -65,7 +70,7 @@ def serve_static(path):
     # If file doesn't exist, return 404 JSON for API routes, or index.html for others
     if path.startswith('api/'):
         return jsonify({'error': 'Not found'}), 404
-    return send_from_directory('.', 'index.html')
+    return render_template('index.html', api_base_url=API_BASE_URL)
 
 
 # ============================================================================
