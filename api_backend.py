@@ -63,38 +63,6 @@ def serve_admin():
     """Serve the admin portal"""
     return render_template('admin.html', api_base_url=API_BASE_URL)
 
-@app.route('/<path:path>')
-def serve_static(path):
-    """Serve static files (JSX, etc.)"""
-    # Don't serve files starting with api/ or admin/
-    if path.startswith('api/') or path.startswith('admin/'):
-        return jsonify({'error': 'Not found'}), 404
-
-    # Try to serve the file from the current directory
-    file_path = os.path.join(app.root_path, path)
-    if os.path.isfile(file_path):
-        # Determine MIME type
-        if path.endswith('.jsx'):
-            mimetype = 'application/javascript'
-        elif path.endswith('.js'):
-            mimetype = 'application/javascript'
-        elif path.endswith('.css'):
-            mimetype = 'text/css'
-        elif path.endswith('.json'):
-            mimetype = 'application/json'
-        else:
-            mimetype = None
-
-        return send_from_directory(app.root_path, path, mimetype=mimetype)
-
-    # File not found - return 404 or index.html
-    # For unknown paths that don't look like files, serve index.html (SPA routing)
-    if '.' not in path:  # No extension = probably a route
-        return render_template('index.html', api_base_url=API_BASE_URL)
-
-    # Has extension but file not found = 404
-    return jsonify({'error': 'File not found'}), 404
-
 
 # ============================================================================
 # API Routes - Auctions
@@ -879,6 +847,43 @@ def health_check():
             'status': 'unhealthy',
             'error': str(e)
         }), 500
+
+
+# ============================================================================
+# Catch-All Route for Static Files (MUST BE LAST)
+# ============================================================================
+
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serve static files (JSX, etc.)"""
+    # Don't serve files starting with api/ or admin/
+    if path.startswith('api/') or path.startswith('admin/'):
+        return jsonify({'error': 'Not found'}), 404
+
+    # Try to serve the file from the current directory
+    file_path = os.path.join(app.root_path, path)
+    if os.path.isfile(file_path):
+        # Determine MIME type
+        if path.endswith('.jsx'):
+            mimetype = 'application/javascript'
+        elif path.endswith('.js'):
+            mimetype = 'application/javascript'
+        elif path.endswith('.css'):
+            mimetype = 'text/css'
+        elif path.endswith('.json'):
+            mimetype = 'application/json'
+        else:
+            mimetype = None
+
+        return send_from_directory(app.root_path, path, mimetype=mimetype)
+
+    # File not found - return 404 or index.html
+    # For unknown paths that don't look like files, serve index.html (SPA routing)
+    if '.' not in path:  # No extension = probably a route
+        return render_template('index.html', api_base_url=API_BASE_URL)
+
+    # Has extension but file not found = 404
+    return jsonify({'error': 'File not found'}), 404
 
 
 # ============================================================================
