@@ -1,0 +1,16 @@
+# Flask Backend
+flask==3.0.0
+flask-cors==4.0.0
+
+# Database
+psycopg2-binary==2.9.9
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Web Scraping
+requests==2.31.0
+beautifulsoup4==4.12.2
+
+# Utilities
+python-dateutil==2.8.2

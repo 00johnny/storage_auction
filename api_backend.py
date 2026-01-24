@@ -491,35 +491,334 @@ def search_auctions():
 
 
 # ============================================================================
-# API Routes - Providers
+# API Routes - Providers (Full CRUD)
 # ============================================================================
 
 @app.route('/api/providers', methods=['GET'])
 def get_providers():
-    """Get all storage providers"""
+    """Get all storage providers with optional filtering"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        # Add filtering options
+        state = request.args.get('state')
+        active_only = request.args.get('active_only', 'true').lower() == 'true'
+
+        query = """
             SELECT p.*, COUNT(a.auction_id) as active_auctions
             FROM providers p
             LEFT JOIN auctions a ON p.provider_id = a.provider_id AND a.status = 'active'
-            WHERE p.is_active = TRUE
-            GROUP BY p.provider_id
-            ORDER BY p.name
-        """)
-        
+            WHERE 1=1
+        """
+        params = []
+
+        if active_only:
+            query += " AND p.is_active = TRUE"
+
+        if state:
+            query += " AND p.state = %s"
+            params.append(state)
+
+        query += " GROUP BY p.provider_id ORDER BY p.name"
+
+        cursor.execute(query, params)
         providers = [dict(row) for row in cursor.fetchall()]
-        
+
+        # Convert datetime fields to ISO strings
+        for provider in providers:
+            for field in ['created_at', 'updated_at', 'last_scraped_at']:
+                if provider.get(field):
+                    provider[field] = provider[field].isoformat()
+
         cursor.close()
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'providers': providers
         })
-        
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/providers/<provider_id>', methods=['GET'])
+def get_provider(provider_id):
+    """Get a single provider by ID"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT p.*,
+                   COUNT(DISTINCT CASE WHEN a.status = 'active' THEN a.auction_id END) as active_auctions,
+                   COUNT(DISTINCT a.auction_id) as total_auctions,
+                   MAX(sl.scrape_started_at) as last_scrape_time,
+                   (SELECT status FROM scrape_logs WHERE provider_id = p.provider_id
+                    ORDER BY scrape_started_at DESC LIMIT 1) as last_scrape_status
+            FROM providers p
+            LEFT JOIN auctions a ON p.provider_id = a.provider_id
+            LEFT JOIN scrape_logs sl ON p.provider_id = sl.provider_id
+            WHERE p.provider_id = %s
+            GROUP BY p.provider_id
+        """, (provider_id,))
+
+        provider = cursor.fetchone()
+
+        if not provider:
+            return jsonify({
+                'success': False,
+                'error': 'Provider not found'
+            }), 404
+
+        provider_dict = dict(provider)
+
+        # Convert datetime fields
+        for field in ['created_at', 'updated_at', 'last_scraped_at', 'last_scrape_time']:
+            if provider_dict.get(field):
+                provider_dict[field] = provider_dict[field].isoformat()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'provider': provider_dict
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/providers', methods=['POST'])
+def create_provider():
+    """Create a new provider"""
+    try:
+        data = request.get_json()
+
+        # Validate required fields
+        required_fields = ['name', 'city', 'state', 'zip_code']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({
+                    'success': False,
+                    'error': f'Missing required field: {field}'
+                }), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO providers (
+                name,
+                website,
+                phone,
+                email,
+                address_line1,
+                address_line2,
+                city,
+                state,
+                zip_code,
+                source_url,
+                scrape_frequency_hours,
+                is_active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING provider_id
+        """, (
+            data.get('name'),
+            data.get('website'),
+            data.get('phone'),
+            data.get('email'),
+            data.get('address_line1'),
+            data.get('address_line2'),
+            data.get('city'),
+            data.get('state'),
+            data.get('zip_code'),
+            data.get('source_url'),
+            data.get('scrape_frequency_hours', 24),
+            data.get('is_active', True)
+        ))
+
+        provider_id = cursor.fetchone()['provider_id']
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'provider_id': provider_id,
+            'message': 'Provider created successfully'
+        }), 201
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/providers/<provider_id>', methods=['PUT'])
+def update_provider(provider_id):
+    """Update an existing provider"""
+    try:
+        data = request.get_json()
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Check if provider exists
+        cursor.execute("SELECT provider_id FROM providers WHERE provider_id = %s", (provider_id,))
+        if not cursor.fetchone():
+            return jsonify({
+                'success': False,
+                'error': 'Provider not found'
+            }), 404
+
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        params = []
+
+        allowed_fields = [
+            'name', 'website', 'phone', 'email', 'address_line1', 'address_line2',
+            'city', 'state', 'zip_code', 'source_url', 'scrape_frequency_hours', 'is_active'
+        ]
+
+        for field in allowed_fields:
+            if field in data:
+                update_fields.append(f"{field} = %s")
+                params.append(data[field])
+
+        if not update_fields:
+            return jsonify({
+                'success': False,
+                'error': 'No valid fields to update'
+            }), 400
+
+        # Add updated_at
+        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(provider_id)
+
+        query = f"UPDATE providers SET {', '.join(update_fields)} WHERE provider_id = %s"
+        cursor.execute(query, params)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'Provider updated successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/providers/<provider_id>', methods=['DELETE'])
+def delete_provider(provider_id):
+    """Delete a provider (soft delete by setting is_active to false)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Check if provider exists
+        cursor.execute("SELECT provider_id FROM providers WHERE provider_id = %s", (provider_id,))
+        if not cursor.fetchone():
+            return jsonify({
+                'success': False,
+                'error': 'Provider not found'
+            }), 404
+
+        # Soft delete - set is_active to false
+        cursor.execute("""
+            UPDATE providers
+            SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+            WHERE provider_id = %s
+        """, (provider_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'Provider deleted successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/providers/<provider_id>/scrape', methods=['POST'])
+def trigger_scrape(provider_id):
+    """Manually trigger a scrape for a specific provider"""
+    try:
+        data = request.get_json() or {}
+        full_scrape = data.get('full_scrape', True)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get provider details
+        cursor.execute("""
+            SELECT name, source_url FROM providers
+            WHERE provider_id = %s AND is_active = TRUE
+        """, (provider_id,))
+
+        provider = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not provider:
+            return jsonify({
+                'success': False,
+                'error': 'Provider not found or inactive'
+            }), 404
+
+        if not provider['source_url']:
+            return jsonify({
+                'success': False,
+                'error': 'Provider has no source_url configured'
+            }), 400
+
+        # Import scrapers here to avoid circular imports
+        from scrapers import Bid13Scraper, StorageAuctionsScraper
+
+        # Determine which scraper to use based on provider or URL
+        # This is a simple example - you might want to store scraper_type in the database
+        if 'bid13.com' in provider['source_url']:
+            scraper = Bid13Scraper(provider_id, provider['source_url'])
+        elif 'storageauctions.com' in provider['source_url']:
+            scraper = StorageAuctionsScraper(provider_id)
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'No scraper available for this provider'
+            }), 400
+
+        # Run the scraper in the background (for now, run synchronously)
+        # In production, you'd want to use Celery or similar for background tasks
+        result = scraper.run_scraper(full_scrape=full_scrape)
+
+        return jsonify({
+            'success': True,
+            'scrape_result': result
+        })
+
     except Exception as e:
         return jsonify({
             'success': False,
