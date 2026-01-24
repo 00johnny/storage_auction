@@ -58,6 +58,7 @@ def serve_frontend():
     return render_template('index.html', api_base_url=API_BASE_URL)
 
 @app.route('/admin')
+@app.route('/admin/')
 def serve_admin():
     """Serve the admin portal"""
     return render_template('admin.html', api_base_url=API_BASE_URL)
@@ -65,8 +66,8 @@ def serve_admin():
 @app.route('/<path:path>')
 def serve_static(path):
     """Serve static files (JSX, etc.)"""
-    # Don't serve files starting with api/
-    if path.startswith('api/'):
+    # Don't serve files starting with api/ or admin/
+    if path.startswith('api/') or path.startswith('admin/'):
         return jsonify({'error': 'Not found'}), 404
 
     # Try to serve the file from the current directory
