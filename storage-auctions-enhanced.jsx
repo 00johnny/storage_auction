@@ -32,8 +32,8 @@ const StorageAuctionApp = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Get API base URL from injected config
-        const apiBaseUrl = window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000';
+        // Get API base URL from injected config and normalize (remove trailing slash)
+        const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
 
         // Fetch auctions
         const auctionsResponse = await fetch(`${apiBaseUrl}/api/auctions`);

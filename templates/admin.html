@@ -45,7 +45,8 @@
 
     <script type="text/babel">
     const { useState, useEffect } = React;
-    const API_BASE_URL = window.APP_CONFIG.API_BASE_URL;
+    // Normalize API_BASE_URL - remove trailing slash to prevent double slashes
+    const API_BASE_URL = window.APP_CONFIG.API_BASE_URL.replace(/\/$/, '');
 
     const AdminPortal = () => {
         const [activeTab, setActiveTab] = useState('providers');
