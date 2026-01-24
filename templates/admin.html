@@ -88,63 +88,87 @@
         };
 
         const saveProvider = async () => {
-            const url = selectedProvider
-                ? `${API_BASE_URL}/api/providers/${selectedProvider.provider_id}`
-                : `${API_BASE_URL}/api/providers`;
+            try {
+                const url = selectedProvider
+                    ? `${API_BASE_URL}/api/providers/${selectedProvider.provider_id}`
+                    : `${API_BASE_URL}/api/providers`;
 
-            const method = selectedProvider ? 'PUT' : 'POST';
+                const method = selectedProvider ? 'PUT' : 'POST';
 
-            const response = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
 
-            const result = await response.json();
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text);
+                    alert(`Server error: Expected JSON but got: ${text.substring(0, 100)}`);
+                    return;
+                }
 
-            if (result.success) {
-                alert(selectedProvider ? 'Provider updated!' : 'Provider created!');
-                setIsEditing(false);
-                // Refresh providers list
-                window.location.reload();
-            } else {
-                alert('Error: ' + result.error);
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(selectedProvider ? 'Provider updated!' : 'Provider created!');
+                    setIsEditing(false);
+                    // Refresh providers list
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Error saving provider: ' + error.message);
             }
         };
 
         const deleteProvider = async (providerId) => {
             if (!confirm('Are you sure you want to delete this provider?')) return;
 
-            const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}`, {
-                method: 'DELETE'
-            });
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}`, {
+                    method: 'DELETE'
+                });
 
-            const result = await response.json();
+                const result = await response.json();
 
-            if (result.success) {
-                alert('Provider deleted!');
-                window.location.reload();
-            } else {
-                alert('Error: ' + result.error);
+                if (result.success) {
+                    alert('Provider deleted!');
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                alert('Error deleting provider: ' + error.message);
             }
         };
 
         const triggerScrape = async (providerId) => {
             if (!confirm('Start scraping this provider?')) return;
 
-            const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}/scrape`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ full_scrape: true })
-            });
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}/scrape`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ full_scrape: true })
+                });
 
-            const result = await response.json();
+                const result = await response.json();
 
-            if (result.success) {
-                const sr = result.scrape_result;
-                alert(`Scrape complete!\nFound: ${sr.auctions_found}\nAdded: ${sr.auctions_added}\nUpdated: ${sr.auctions_updated}`);
-            } else {
-                alert('Scrape failed: ' + result.error);
+                if (result.success) {
+                    const sr = result.scrape_result;
+                    alert(`Scrape complete!\nFound: ${sr.auctions_found}\nAdded: ${sr.auctions_added}\nUpdated: ${sr.auctions_updated}`);
+                } else {
+                    alert('Scrape failed: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Scrape error:', error);
+                alert('Error triggering scrape: ' + error.message);
             }
         };
 
