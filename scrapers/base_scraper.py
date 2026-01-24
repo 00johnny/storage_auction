@@ -68,6 +68,15 @@ class BaseScraper:
         Returns:
             auction_id if successful, None otherwise
         """
+        # Validate required fields
+        if not auction_data.get('closes_at'):
+            print(f"Warning: Skipping auction {auction_data.get('external_auction_id')} - missing required field: closes_at")
+            return None
+
+        if not auction_data.get('external_auction_id'):
+            print(f"Warning: Skipping auction - missing external_auction_id")
+            return None
+
         conn = self.get_db_connection()
         cursor = conn.cursor()
 

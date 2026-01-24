@@ -85,13 +85,35 @@ class Bid13Scraper(BaseScraper):
         countdown_elem = auction.find('div', class_='countdown')
         end_time_str = countdown_elem.get("data-expiry") if countdown_elem else None
 
-        # Parse end time (format: "2026-01-25 15:30:00" or similar)
+        # Parse end time (try multiple formats)
         closes_at = None
         if end_time_str:
-            try:
-                closes_at = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
-            except:
-                closes_at = None
+            # Try different datetime formats
+            formats = [
+                '%Y-%m-%d %H:%M:%S',           # 2026-01-25 15:30:00
+                '%Y-%m-%dT%H:%M:%S',           # 2026-01-25T15:30:00
+                '%Y-%m-%dT%H:%M:%SZ',          # 2026-01-25T15:30:00Z
+                '%Y-%m-%d %H:%M:%S.%f',        # 2026-01-25 15:30:00.123456
+            ]
+
+            for fmt in formats:
+                try:
+                    closes_at = datetime.strptime(end_time_str.strip(), fmt)
+                    break
+                except ValueError:
+                    continue
+
+            # If all formats fail, try ISO format
+            if not closes_at:
+                try:
+                    closes_at = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+                except Exception as e:
+                    print(f"Warning: Could not parse end time '{end_time_str}': {e}")
+
+        # Skip auctions without end time - they're not useful
+        if not closes_at:
+            print(f"Skipping auction {external_id} - no valid end time (got: {end_time_str})")
+            return None
 
         # Extract address if available
         address_elem = auction.find('div', class_='auc-address')
