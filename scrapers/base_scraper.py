@@ -131,7 +131,8 @@ class BaseScraper:
                 ))
 
                 facility_id = cursor.fetchone()['facility_id']
-                print(f"Created new facility: {facility_data.get('facility_name')} in {facility_data.get('city')}, {facility_data.get('state')}")
+                # Only log if we're not in dry_run mode (to reduce noise)
+                # print(f"Created new facility: {facility_data.get('facility_name')} in {facility_data.get('city')}, {facility_data.get('state')}")
 
             conn.commit()
             cursor.close()

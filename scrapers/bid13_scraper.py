@@ -196,27 +196,17 @@ class Bid13Scraper(BaseScraper):
         address_elem = auction.find('div', class_='auc-address')
         address = address_elem.text.strip() if address_elem else ''
 
-        # Debug: print what we found
-        if not address_elem:
-            print(f"Debug: No address element found for auction {external_id}")
-        elif not address:
-            print(f"Debug: Address element found but empty for auction {external_id}")
-        else:
-            print(f"Debug: Found address for auction {external_id}: '{address}'")
-
         # Parse city and state from address
         # Address format is typically: "City, State" or "City, ST"
         city = 'Unknown'
         state = 'CA'
+
         if address:
             # Try to parse "City, State" format
             parts = [p.strip() for p in address.split(',')]
             if len(parts) >= 2:
                 city = parts[0]
                 state = parts[1][:2].upper()  # Take first 2 chars and uppercase
-                print(f"Debug: Parsed location from address - City: {city}, State: {state}")
-            else:
-                print(f"Debug: Address doesn't have comma separator: '{address}'")
 
         # Fallback: If address is empty, try to extract from facility_url query params
         if city == 'Unknown' and hasattr(self, 'facility_url'):
@@ -227,13 +217,11 @@ class Bid13Scraper(BaseScraper):
 
                 if 'city' in params and params['city']:
                     city = params['city'][0]
-                    print(f"Debug: Extracted city from URL: {city}")
 
                 if 'state' in params and params['state']:
                     state = params['state'][0][:2].upper()
-                    print(f"Debug: Extracted state from URL: {state}")
             except Exception as e:
-                print(f"Debug: Could not parse URL params: {e}")
+                print(f"Warning: Could not parse URL params for location: {e}")
 
         # Create or get facility record
         facility_data = {
@@ -243,6 +231,11 @@ class Bid13Scraper(BaseScraper):
             'address_line1': address
         }
         facility_id = self.get_or_create_facility(facility_data)
+
+        # Log summary for first auction only (to verify parsing is working)
+        if not hasattr(self, '_first_auction_logged'):
+            print(f"Sample auction parsed: Unit {unit_text} at {facility_name} in {city}, {state}")
+            self._first_auction_logged = True
 
         return {
             'external_auction_id': external_id,
@@ -311,6 +304,14 @@ class Bid13Scraper(BaseScraper):
             auctions_added = 0
             auctions_updated = 0
 
+            # Get unique facilities for summary
+            unique_facilities = {}
+            for auction in auctions:
+                facility_key = f"{auction.get('facility_name')} ({auction.get('city')}, {auction.get('state')})"
+                if facility_key not in unique_facilities:
+                    unique_facilities[facility_key] = 0
+                unique_facilities[facility_key] += 1
+
             # If dry run, just return the data without saving
             if dry_run:
                 # Check which would be added vs updated
@@ -319,6 +320,11 @@ class Bid13Scraper(BaseScraper):
                         auctions_updated += 1
                     else:
                         auctions_added += 1
+
+                print(f"Dry run complete: {auctions_found} found, {auctions_added} would add, {auctions_updated} would update")
+                print(f"Facilities found: {len(unique_facilities)}")
+                for facility, count in sorted(unique_facilities.items()):
+                    print(f"  - {facility}: {count} auctions")
 
                 return {
                     'status': 'success',
@@ -342,6 +348,9 @@ class Bid13Scraper(BaseScraper):
             self.log_scrape('success', auctions_found, auctions_added, auctions_updated)
 
             print(f"Scraping complete: {auctions_found} found, {auctions_added} added, {auctions_updated} updated")
+            print(f"Facilities found: {len(unique_facilities)}")
+            for facility, count in sorted(unique_facilities.items()):
+                print(f"  - {facility}: {count} auctions")
 
             return {
                 'status': 'success',
