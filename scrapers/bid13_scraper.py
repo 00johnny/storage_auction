@@ -205,26 +205,49 @@ class Bid13Scraper(BaseScraper):
                 city = parts[0]
                 state = parts[1][:2].upper()  # Take first 2 chars and uppercase
 
-        # Fallback: If address is empty, try to extract from facility_url query params
+        # Fallback: If address is empty, try to extract from facility_url query params or path
         if city == 'Unknown' and hasattr(self, 'facility_url'):
             from urllib.parse import urlparse, parse_qs
             try:
                 parsed_url = urlparse(self.facility_url)
                 params = parse_qs(parsed_url.query)
 
-                # Debug once to see what's happening
-                if not hasattr(self, '_url_debug_logged'):
-                    print(f"URL fallback check - URL: {self.facility_url}")
-                    print(f"URL params found: {params}")
-                    self._url_debug_logged = True
-
+                # Try query parameters first (e.g., ?city=Sacramento&state=CA)
                 if 'city' in params and params['city']:
                     city = params['city'][0]
 
                 if 'state' in params and params['state']:
                     state = params['state'][0][:2].upper()
+
+                # If no query params, try to extract state from path
+                # e.g., /current-auctions/united-states/california -> CA
+                if state == 'CA' and not params.get('state'):
+                    path = parsed_url.path.lower()
+                    state_map = {
+                        'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
+                        'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT',
+                        'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI',
+                        'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+                        'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME',
+                        'maryland': 'MD', 'massachusetts': 'MA', 'michigan': 'MI',
+                        'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+                        'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV',
+                        'new-hampshire': 'NH', 'new-jersey': 'NJ', 'new-mexico': 'NM',
+                        'new-york': 'NY', 'north-carolina': 'NC', 'north-dakota': 'ND',
+                        'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA',
+                        'rhode-island': 'RI', 'south-carolina': 'SC', 'south-dakota': 'SD',
+                        'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+                        'virginia': 'VA', 'washington': 'WA', 'west-virginia': 'WV',
+                        'wisconsin': 'WI', 'wyoming': 'WY'
+                    }
+
+                    for state_name, state_code in state_map.items():
+                        if state_name in path:
+                            state = state_code
+                            break
+
             except Exception as e:
-                print(f"Warning: Could not parse URL params for location: {e}")
+                print(f"Warning: Could not parse URL for location: {e}")
 
         # Create or get facility record
         facility_data = {

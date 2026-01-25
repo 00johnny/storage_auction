@@ -20,6 +20,7 @@ const StorageAuctionApp = () => {
   const [filteredAuctions, setFilteredAuctions] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCity, setSelectedCity] = useState('all');
+  const [selectedProvider, setSelectedProvider] = useState('all');
   const [selectedTags, setSelectedTags] = useState([]);
   const [sortBy, setSortBy] = useState('closing-soon');
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'detail'
@@ -320,6 +321,11 @@ const StorageAuctionApp = () => {
       filtered = filtered.filter(auction => auction.city === selectedCity);
     }
 
+    // Provider filter
+    if (selectedProvider !== 'all') {
+      filtered = filtered.filter(auction => auction.provider === selectedProvider);
+    }
+
     // Tag filter
     if (selectedTags.length > 0) {
       filtered = filtered.filter(auction =>
@@ -337,7 +343,7 @@ const StorageAuctionApp = () => {
     }
 
     setFilteredAuctions(filtered);
-  }, [searchTerm, selectedCity, selectedTags, sortBy, auctions]);
+  }, [searchTerm, selectedCity, selectedProvider, selectedTags, sortBy, auctions]);
 
   const getTimeRemaining = (closingDate) => {
     const now = new Date();
@@ -364,6 +370,7 @@ const StorageAuctionApp = () => {
   };
 
   const cities = ['all', ...new Set(auctions.map(a => a.city))];
+  const providers = ['all', ...new Set(auctions.map(a => a.provider).filter(p => p))];
 
   // Detail Page Component
   const AuctionDetailPage = ({ auction }) => {
@@ -644,6 +651,22 @@ const StorageAuctionApp = () => {
                 {cities.map(city => (
                   <option key={city} value={city}>
                     {city === 'all' ? 'All Cities' : city}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Provider Filter */}
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <select
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+              >
+                {providers.map(provider => (
+                  <option key={provider} value={provider}>
+                    {provider === 'all' ? 'All Providers' : provider}
                   </option>
                 ))}
               </select>
