@@ -45,10 +45,22 @@ class Bid13Scraper(BaseScraper):
             minutes_elem = countdown_elem.find('div', class_='time-minutes')
             seconds_elem = countdown_elem.find('div', class_='time-seconds')
 
-            days = int(days_elem.text.strip()) if days_elem else 0
-            hours = int(hours_elem.text.strip()) if hours_elem else 0
-            minutes = int(minutes_elem.text.strip()) if minutes_elem else 0
-            seconds = int(seconds_elem.text.strip()) if seconds_elem else 0
+            # Helper function to safely parse int from text (handles empty strings)
+            def safe_int(elem, default=0):
+                if not elem:
+                    return default
+                text = elem.text.strip()
+                if not text or text == '':
+                    return default
+                try:
+                    return int(text)
+                except ValueError:
+                    return default
+
+            days = safe_int(days_elem, 0)
+            hours = safe_int(hours_elem, 0)
+            minutes = safe_int(minutes_elem, 0)
+            seconds = safe_int(seconds_elem, 0)
 
             # Calculate end time from now
             time_remaining = timedelta(
@@ -130,27 +142,35 @@ class Bid13Scraper(BaseScraper):
 
         # Method 1: Try data-expiry attribute
         if end_time_str and end_time_str.strip():
-            # Try different datetime formats
-            formats = [
-                '%Y-%m-%d %H:%M:%S',           # 2026-01-25 15:30:00
-                '%Y-%m-%dT%H:%M:%S',           # 2026-01-25T15:30:00
-                '%Y-%m-%dT%H:%M:%SZ',          # 2026-01-25T15:30:00Z
-                '%Y-%m-%d %H:%M:%S.%f',        # 2026-01-25 15:30:00.123456
-            ]
-
-            for fmt in formats:
+            # Check if it's a Unix timestamp (all digits)
+            if end_time_str.strip().isdigit():
                 try:
-                    closes_at = datetime.strptime(end_time_str.strip(), fmt)
-                    break
-                except ValueError:
-                    continue
+                    closes_at = datetime.fromtimestamp(int(end_time_str))
+                    print(f"Parsed Unix timestamp for auction {external_id}: {closes_at}")
+                except (ValueError, OSError) as e:
+                    print(f"Warning: Could not parse Unix timestamp '{end_time_str}': {e}")
+            else:
+                # Try different datetime formats
+                formats = [
+                    '%Y-%m-%d %H:%M:%S',           # 2026-01-25 15:30:00
+                    '%Y-%m-%dT%H:%M:%S',           # 2026-01-25T15:30:00
+                    '%Y-%m-%dT%H:%M:%SZ',          # 2026-01-25T15:30:00Z
+                    '%Y-%m-%d %H:%M:%S.%f',        # 2026-01-25 15:30:00.123456
+                ]
 
-            # If all formats fail, try ISO format
-            if not closes_at:
-                try:
-                    closes_at = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
-                except Exception as e:
-                    print(f"Warning: Could not parse end time '{end_time_str}': {e}")
+                for fmt in formats:
+                    try:
+                        closes_at = datetime.strptime(end_time_str.strip(), fmt)
+                        break
+                    except ValueError:
+                        continue
+
+                # If all formats fail, try ISO format
+                if not closes_at:
+                    try:
+                        closes_at = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+                    except Exception as e:
+                        print(f"Warning: Could not parse end time '{end_time_str}': {e}")
 
         # Method 2: If data-expiry is empty, try countdown timer
         if not closes_at and countdown_elem:
