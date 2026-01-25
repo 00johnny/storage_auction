@@ -196,6 +196,14 @@ class Bid13Scraper(BaseScraper):
         address_elem = auction.find('div', class_='auc-address')
         address = address_elem.text.strip() if address_elem else ''
 
+        # Debug: print what we found
+        if not address_elem:
+            print(f"Debug: No address element found for auction {external_id}")
+        elif not address:
+            print(f"Debug: Address element found but empty for auction {external_id}")
+        else:
+            print(f"Debug: Found address for auction {external_id}: '{address}'")
+
         # Parse city and state from address
         # Address format is typically: "City, State" or "City, ST"
         city = 'Unknown'
@@ -206,6 +214,26 @@ class Bid13Scraper(BaseScraper):
             if len(parts) >= 2:
                 city = parts[0]
                 state = parts[1][:2].upper()  # Take first 2 chars and uppercase
+                print(f"Debug: Parsed location from address - City: {city}, State: {state}")
+            else:
+                print(f"Debug: Address doesn't have comma separator: '{address}'")
+
+        # Fallback: If address is empty, try to extract from facility_url query params
+        if city == 'Unknown' and hasattr(self, 'facility_url'):
+            from urllib.parse import urlparse, parse_qs
+            try:
+                parsed_url = urlparse(self.facility_url)
+                params = parse_qs(parsed_url.query)
+
+                if 'city' in params and params['city']:
+                    city = params['city'][0]
+                    print(f"Debug: Extracted city from URL: {city}")
+
+                if 'state' in params and params['state']:
+                    state = params['state'][0][:2].upper()
+                    print(f"Debug: Extracted state from URL: {state}")
+            except Exception as e:
+                print(f"Debug: Could not parse URL params: {e}")
 
         # Create or get facility record
         facility_data = {
