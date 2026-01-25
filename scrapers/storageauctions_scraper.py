@@ -205,17 +205,18 @@ class StorageAuctionsScraper(BaseScraper):
         all_auctions = self.scrape_all()
         return [a for a in all_auctions if a['external_auction_id'] in auction_ids]
 
-    def run_scraper(self, full_scrape: bool = True) -> Dict:
+    def run_scraper(self, full_scrape: bool = True, dry_run: bool = False) -> Dict:
         """
         Run the scraper and save to database
 
         Args:
             full_scrape: If True, scrape all auctions. If False, only update existing
+            dry_run: If True, scrape but don't save to database (for testing)
 
         Returns:
             Dictionary with scraping results
         """
-        print(f"Starting StorageAuctions.com scraper for provider {self.provider_id}")
+        print(f"Starting StorageAuctions.com scraper for provider {self.provider_id} (dry_run={dry_run})")
 
         try:
             if full_scrape:
@@ -238,6 +239,25 @@ class StorageAuctionsScraper(BaseScraper):
             auctions_added = 0
             auctions_updated = 0
 
+            # If dry run, just return the data without saving
+            if dry_run:
+                # Check which would be added vs updated
+                for auction_data in auctions:
+                    if self.auction_exists(auction_data['external_auction_id']):
+                        auctions_updated += 1
+                    else:
+                        auctions_added += 1
+
+                return {
+                    'status': 'success',
+                    'dry_run': True,
+                    'auctions_found': auctions_found,
+                    'auctions_added': auctions_added,
+                    'auctions_updated': auctions_updated,
+                    'auctions': auctions  # Include actual auction data for preview
+                }
+
+            # Normal mode: save to database
             for auction_data in auctions:
                 if self.auction_exists(auction_data['external_auction_id']):
                     self.save_auction(auction_data)

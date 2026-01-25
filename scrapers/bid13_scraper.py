@@ -183,20 +183,50 @@ class Bid13Scraper(BaseScraper):
             print(f"Skipping auction {external_id} - no valid end time (data-expiry: '{end_time_str}', countdown: not found)")
             return None
 
+        # Extract facility name from auc-owner span
+        facility_name = 'Unknown Facility'
+        owner_elem = auction.find('span', class_='auc-owner')
+        if owner_elem:
+            # Look for the field-content span inside auc-owner
+            field_content = owner_elem.find('span', class_='field-content')
+            if field_content:
+                facility_name = field_content.text.strip()
+
         # Extract address if available
         address_elem = auction.find('div', class_='auc-address')
         address = address_elem.text.strip() if address_elem else ''
+
+        # Parse city and state from address
+        # Address format is typically: "City, State" or "City, ST"
+        city = 'Unknown'
+        state = 'CA'
+        if address:
+            # Try to parse "City, State" format
+            parts = [p.strip() for p in address.split(',')]
+            if len(parts) >= 2:
+                city = parts[0]
+                state = parts[1][:2].upper()  # Take first 2 chars and uppercase
+
+        # Create or get facility record
+        facility_data = {
+            'facility_name': facility_name,
+            'city': city,
+            'state': state,
+            'address_line1': address
+        }
+        facility_id = self.get_or_create_facility(facility_data)
 
         return {
             'external_auction_id': external_id,
             'unit_number': unit_text,
             'unit_size': size,
             'description': f'Storage unit {unit_text}',
-            'facility_name': 'Bid13 Facility',  # Can be extracted from page if available
+            'facility_id': facility_id,
+            'facility_name': facility_name,
             'address_line1': address,
-            'city': 'Unknown',  # Parse from address if available
-            'state': 'CA',
-            'zip_code': '00000',  # Parse from address if available
+            'city': city,
+            'state': state,
+            'zip_code': '00000',  # Bid13 doesn't provide zip codes in listings
             'starts_at': datetime.now(),
             'closes_at': closes_at,
             'minimum_bid': bid,  # First bid is minimum
@@ -219,17 +249,18 @@ class Bid13Scraper(BaseScraper):
         all_auctions = self.scrape_all()
         return [a for a in all_auctions if a['external_auction_id'] in auction_ids]
 
-    def run_scraper(self, full_scrape: bool = True) -> Dict:
+    def run_scraper(self, full_scrape: bool = True, dry_run: bool = False) -> Dict:
         """
         Run the scraper and save to database
 
         Args:
             full_scrape: If True, scrape all auctions. If False, only update existing
+            dry_run: If True, scrape but don't save to database (for testing)
 
         Returns:
             Dictionary with scraping results
         """
-        print(f"Starting Bid13 scraper for provider {self.provider_id}")
+        print(f"Starting Bid13 scraper for provider {self.provider_id} (dry_run={dry_run})")
 
         try:
             if full_scrape:
@@ -252,6 +283,25 @@ class Bid13Scraper(BaseScraper):
             auctions_added = 0
             auctions_updated = 0
 
+            # If dry run, just return the data without saving
+            if dry_run:
+                # Check which would be added vs updated
+                for auction_data in auctions:
+                    if self.auction_exists(auction_data['external_auction_id']):
+                        auctions_updated += 1
+                    else:
+                        auctions_added += 1
+
+                return {
+                    'status': 'success',
+                    'dry_run': True,
+                    'auctions_found': auctions_found,
+                    'auctions_added': auctions_added,
+                    'auctions_updated': auctions_updated,
+                    'auctions': auctions  # Include actual auction data for preview
+                }
+
+            # Normal mode: save to database
             for auction_data in auctions:
                 if self.auction_exists(auction_data['external_auction_id']):
                     self.save_auction(auction_data)

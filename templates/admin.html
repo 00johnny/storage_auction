@@ -55,6 +55,8 @@
         const [selectedProvider, setSelectedProvider] = useState(null);
         const [isEditing, setIsEditing] = useState(false);
         const [formData, setFormData] = useState({});
+        const [testScrapeResults, setTestScrapeResults] = useState(null);
+        const [showTestResults, setShowTestResults] = useState(false);
 
         // Fetch providers
         useEffect(() => {
@@ -164,12 +166,37 @@
                 if (result.success) {
                     const sr = result.scrape_result;
                     alert(`Scrape complete!\nFound: ${sr.auctions_found}\nAdded: ${sr.auctions_added}\nUpdated: ${sr.auctions_updated}`);
+                    fetchProviders(); // Refresh provider list
                 } else {
                     alert('Scrape failed: ' + result.error);
                 }
             } catch (error) {
                 console.error('Scrape error:', error);
                 alert('Error triggering scrape: ' + error.message);
+            }
+        };
+
+        const testScrape = async (providerId) => {
+            try {
+                setTestScrapeResults({ loading: true });
+                setShowTestResults(true);
+
+                const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}/scrape`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ full_scrape: true, dry_run: true })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    setTestScrapeResults(result.scrape_result);
+                } else {
+                    setTestScrapeResults({ error: result.error });
+                }
+            } catch (error) {
+                console.error('Test scrape error:', error);
+                setTestScrapeResults({ error: error.message });
             }
         };
 
@@ -254,6 +281,13 @@
                                                         className="text-blue-600 hover:text-blue-900"
                                                     >
                                                         Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => testScrape(provider.provider_id)}
+                                                        className="text-purple-600 hover:text-purple-900"
+                                                        title="Test scrape without saving to database"
+                                                    >
+                                                        Test
                                                     </button>
                                                     <button
                                                         onClick={() => triggerScrape(provider.provider_id)}
@@ -394,6 +428,89 @@
                                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                                 >
                                     Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Test Scrape Results Modal */}
+                {showTestResults && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-screen overflow-y-auto p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xl font-bold">Test Scrape Results</h3>
+                                <button
+                                    onClick={() => setShowTestResults(false)}
+                                    className="text-gray-500 hover:text-gray-700 text-2xl"
+                                >
+                                    ×
+                                </button>
+                            </div>
+
+                            {testScrapeResults && testScrapeResults.loading ? (
+                                <div className="text-center py-8">
+                                    <p className="text-gray-600">Scraping... Please wait...</p>
+                                </div>
+                            ) : testScrapeResults && testScrapeResults.error ? (
+                                <div className="bg-red-50 border border-red-200 rounded p-4">
+                                    <p className="text-red-800 font-semibold">Error:</p>
+                                    <p className="text-red-600">{testScrapeResults.error}</p>
+                                </div>
+                            ) : testScrapeResults && testScrapeResults.auctions ? (
+                                <div>
+                                    <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-4">
+                                        <p className="text-blue-800 font-semibold">Summary:</p>
+                                        <ul className="text-blue-700 mt-2">
+                                            <li>Found: {testScrapeResults.auctions_found} auctions</li>
+                                            <li>Would Add: {testScrapeResults.auctions_added} new auctions</li>
+                                            <li>Would Update: {testScrapeResults.auctions_updated} existing auctions</li>
+                                        </ul>
+                                        <p className="text-sm text-blue-600 mt-2 italic">
+                                            This is a dry run - no changes were saved to the database.
+                                        </p>
+                                    </div>
+
+                                    <h4 className="font-semibold mb-2">Auction Details:</h4>
+                                    <div className="bg-white border border-gray-200 rounded overflow-hidden">
+                                        <div className="overflow-x-auto max-h-96">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-gray-50 border-b sticky top-0">
+                                                    <tr>
+                                                        <th className="px-4 py-2 text-left">Unit</th>
+                                                        <th className="px-4 py-2 text-left">Facility</th>
+                                                        <th className="px-4 py-2 text-left">Location</th>
+                                                        <th className="px-4 py-2 text-left">Size</th>
+                                                        <th className="px-4 py-2 text-left">Current Bid</th>
+                                                        <th className="px-4 py-2 text-left">Closes At</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200">
+                                                    {testScrapeResults.auctions.map((auction, idx) => (
+                                                        <tr key={idx} className="hover:bg-gray-50">
+                                                            <td className="px-4 py-2">{auction.unit_number}</td>
+                                                            <td className="px-4 py-2">{auction.facility_name}</td>
+                                                            <td className="px-4 py-2">{auction.city}, {auction.state}</td>
+                                                            <td className="px-4 py-2">{auction.unit_size || 'N/A'}</td>
+                                                            <td className="px-4 py-2">${auction.current_bid}</td>
+                                                            <td className="px-4 py-2">
+                                                                {new Date(auction.closes_at).toLocaleString()}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            <div className="mt-6 flex justify-end">
+                                <button
+                                    onClick={() => setShowTestResults(false)}
+                                    className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                                >
+                                    Close
                                 </button>
                             </div>
                         </div>

@@ -58,6 +58,94 @@ class BaseScraper:
 
         return exists
 
+    def get_or_create_facility(self, facility_data: Dict) -> Optional[str]:
+        """
+        Get existing facility or create new one
+
+        Args:
+            facility_data: Dictionary with facility information:
+                - facility_name (required)
+                - city (required)
+                - state (required)
+                - address_line1 (optional)
+                - address_line2 (optional)
+                - zip_code (optional)
+                - phone (optional)
+                - email (optional)
+
+        Returns:
+            facility_id if successful, None otherwise
+        """
+        if not all([facility_data.get('facility_name'), facility_data.get('city'), facility_data.get('state')]):
+            print("Warning: Missing required facility fields (facility_name, city, state)")
+            return None
+
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Check if facility exists (by provider_id, name, city, state)
+            cursor.execute("""
+                SELECT facility_id FROM facilities
+                WHERE provider_id = %s
+                  AND facility_name = %s
+                  AND city = %s
+                  AND state = %s
+            """, (
+                self.provider_id,
+                facility_data.get('facility_name'),
+                facility_data.get('city'),
+                facility_data.get('state')
+            ))
+
+            existing = cursor.fetchone()
+
+            if existing:
+                facility_id = existing['facility_id']
+            else:
+                # Create new facility
+                cursor.execute("""
+                    INSERT INTO facilities (
+                        provider_id,
+                        facility_name,
+                        address_line1,
+                        address_line2,
+                        city,
+                        state,
+                        zip_code,
+                        phone,
+                        email
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    ) RETURNING facility_id
+                """, (
+                    self.provider_id,
+                    facility_data.get('facility_name'),
+                    facility_data.get('address_line1'),
+                    facility_data.get('address_line2'),
+                    facility_data.get('city'),
+                    facility_data.get('state'),
+                    facility_data.get('zip_code'),
+                    facility_data.get('phone'),
+                    facility_data.get('email')
+                ))
+
+                facility_id = cursor.fetchone()['facility_id']
+                print(f"Created new facility: {facility_data.get('facility_name')} in {facility_data.get('city')}, {facility_data.get('state')}")
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            return facility_id
+
+        except Exception as e:
+            print(f"Error getting/creating facility: {e}")
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            return None
+
     def save_auction(self, auction_data: Dict) -> Optional[str]:
         """
         Save or update auction in database
@@ -97,6 +185,8 @@ class BaseScraper:
                         unit_number = %s,
                         unit_size = %s,
                         description = %s,
+                        facility_id = %s,
+                        facility_name = %s,
                         city = %s,
                         state = %s,
                         zip_code = %s,
@@ -111,6 +201,8 @@ class BaseScraper:
                     auction_data.get('unit_number', 'N/A'),
                     auction_data.get('unit_size'),
                     auction_data.get('description', ''),
+                    auction_data.get('facility_id'),
+                    auction_data.get('facility_name'),
                     auction_data.get('city', 'Unknown'),
                     auction_data.get('state', 'CA'),
                     auction_data.get('zip_code', '00000'),
@@ -128,6 +220,7 @@ class BaseScraper:
                         unit_number,
                         unit_size,
                         description,
+                        facility_id,
                         facility_name,
                         address_line1,
                         city,
@@ -143,13 +236,14 @@ class BaseScraper:
                         external_auction_id,
                         last_scraped_at
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP
                     ) RETURNING auction_id
                 """, (
                     self.provider_id,
                     auction_data.get('unit_number', 'N/A'),
                     auction_data.get('unit_size'),
                     auction_data.get('description', ''),
+                    auction_data.get('facility_id'),
                     auction_data.get('facility_name', ''),
                     auction_data.get('address_line1', ''),
                     auction_data.get('city', 'Unknown'),

@@ -765,6 +765,7 @@ def trigger_scrape(provider_id):
     try:
         data = request.get_json() or {}
         full_scrape = data.get('full_scrape', True)
+        dry_run = data.get('dry_run', False)  # Add dry_run support
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -806,9 +807,9 @@ def trigger_scrape(provider_id):
                 'error': 'No scraper available for this provider'
             }), 400
 
-        # Run the scraper in the background (for now, run synchronously)
+        # Run the scraper (with optional dry_run mode)
         # In production, you'd want to use Celery or similar for background tasks
-        result = scraper.run_scraper(full_scrape=full_scrape)
+        result = scraper.run_scraper(full_scrape=full_scrape, dry_run=dry_run)
 
         return jsonify({
             'success': True,
