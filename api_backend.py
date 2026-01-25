@@ -824,6 +824,162 @@ def trigger_scrape(provider_id):
 
 
 # ============================================================================
+# Facilities Endpoints
+# ============================================================================
+
+@app.route('/api/facilities', methods=['GET'])
+def get_facilities():
+    """Get all facilities, optionally filtered by provider"""
+    try:
+        provider_id = request.args.get('provider_id')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        if provider_id:
+            cursor.execute("""
+                SELECT
+                    f.*,
+                    p.name as provider_name,
+                    COUNT(a.auction_id) as auction_count
+                FROM facilities f
+                LEFT JOIN providers p ON f.provider_id = p.provider_id
+                LEFT JOIN auctions a ON f.facility_id = a.facility_id AND a.status = 'active'
+                WHERE f.provider_id = %s
+                GROUP BY f.facility_id, p.name
+                ORDER BY f.facility_name
+            """, (provider_id,))
+        else:
+            cursor.execute("""
+                SELECT
+                    f.*,
+                    p.name as provider_name,
+                    COUNT(a.auction_id) as auction_count
+                FROM facilities f
+                LEFT JOIN providers p ON f.provider_id = p.provider_id
+                LEFT JOIN auctions a ON f.facility_id = a.facility_id AND a.status = 'active'
+                GROUP BY f.facility_id, p.name
+                ORDER BY p.name, f.facility_name
+            """)
+
+        facilities = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'facilities': facilities
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/facilities/<facility_id>', methods=['GET'])
+def get_facility(facility_id):
+    """Get a specific facility by ID"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                f.*,
+                p.name as provider_name,
+                COUNT(a.auction_id) as auction_count
+            FROM facilities f
+            LEFT JOIN providers p ON f.provider_id = p.provider_id
+            LEFT JOIN auctions a ON f.facility_id = a.facility_id AND a.status = 'active'
+            WHERE f.facility_id = %s
+            GROUP BY f.facility_id, p.name
+        """, (facility_id,))
+
+        facility = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not facility:
+            return jsonify({
+                'success': False,
+                'error': 'Facility not found'
+            }), 404
+
+        return jsonify({
+            'success': True,
+            'facility': facility
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/facilities/<facility_id>', methods=['PUT'])
+def update_facility(facility_id):
+    """Update a facility"""
+    try:
+        data = request.get_json()
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Check if facility exists
+        cursor.execute("SELECT facility_id FROM facilities WHERE facility_id = %s", (facility_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': 'Facility not found'
+            }), 404
+
+        # Update facility
+        cursor.execute("""
+            UPDATE facilities SET
+                facility_name = %s,
+                address_line1 = %s,
+                address_line2 = %s,
+                city = %s,
+                state = %s,
+                zip_code = %s,
+                phone = %s,
+                email = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE facility_id = %s
+        """, (
+            data.get('facility_name'),
+            data.get('address_line1'),
+            data.get('address_line2'),
+            data.get('city'),
+            data.get('state'),
+            data.get('zip_code'),
+            data.get('phone'),
+            data.get('email'),
+            facility_id
+        ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'Facility updated successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# ============================================================================
 # Health Check
 # ============================================================================
 

@@ -51,15 +51,19 @@
     const AdminPortal = () => {
         const [activeTab, setActiveTab] = useState('providers');
         const [providers, setProviders] = useState([]);
+        const [facilities, setFacilities] = useState([]);
         const [scrapeLogs, setScrapeLogs] = useState([]);
         const [selectedProvider, setSelectedProvider] = useState(null);
+        const [selectedFacility, setSelectedFacility] = useState(null);
         const [isEditing, setIsEditing] = useState(false);
+        const [isEditingFacility, setIsEditingFacility] = useState(false);
         const [formData, setFormData] = useState({});
+        const [facilityFormData, setFacilityFormData] = useState({});
         const [testScrapeResults, setTestScrapeResults] = useState(null);
         const [showTestResults, setShowTestResults] = useState(false);
 
         // Fetch providers
-        useEffect(() => {
+        const fetchProviders = () => {
             fetch(`${API_BASE_URL}/api/providers?active_only=false`)
                 .then(res => res.json())
                 .then(data => {
@@ -67,6 +71,22 @@
                         setProviders(data.providers);
                     }
                 });
+        };
+
+        // Fetch facilities
+        const fetchFacilities = () => {
+            fetch(`${API_BASE_URL}/api/facilities`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        setFacilities(data.facilities);
+                    }
+                });
+        };
+
+        useEffect(() => {
+            fetchProviders();
+            fetchFacilities();
         }, []);
 
         const createProvider = () => {
@@ -200,6 +220,36 @@
             }
         };
 
+        // Facility management functions
+        const editFacility = (facility) => {
+            setFacilityFormData(facility);
+            setIsEditingFacility(true);
+            setSelectedFacility(facility);
+        };
+
+        const saveFacility = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/facilities/${selectedFacility.facility_id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(facilityFormData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Facility updated successfully!');
+                    setIsEditingFacility(false);
+                    fetchFacilities(); // Refresh facility list
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Error saving facility: ' + error.message);
+            }
+        };
+
         return (
             <div className="min-h-screen bg-gray-100">
                 <nav className="bg-blue-600 text-white shadow-lg">
@@ -216,6 +266,12 @@
                             className={`px-6 py-3 font-semibold ${activeTab === 'providers' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
                         >
                             Providers
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('facilities')}
+                            className={`px-6 py-3 font-semibold ${activeTab === 'facilities' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+                        >
+                            Facilities
                         </button>
                         <button
                             onClick={() => setActiveTab('logs')}
@@ -300,6 +356,60 @@
                                                         className="text-red-600 hover:text-red-900"
                                                     >
                                                         Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Facilities Tab */}
+                    {activeTab === 'facilities' && (
+                        <div>
+                            <div className="mb-6 flex justify-between items-center">
+                                <h2 className="text-2xl font-bold">Facilities ({facilities.length})</h2>
+                            </div>
+
+                            {/* Facility List */}
+                            <div className="bg-white rounded-lg shadow overflow-hidden">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 border-b">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Facility Name</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Address</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Auctions</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {facilities.map(facility => (
+                                            <tr key={facility.facility_id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm font-medium text-gray-900">{facility.facility_name}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {facility.provider_name}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-600">
+                                                    {facility.address_line1 || <span className="text-gray-400 italic">No address</span>}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {facility.city}, {facility.state} {facility.zip_code || ''}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {facility.auction_count}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm space-x-2">
+                                                    <button
+                                                        onClick={() => editFacility(facility)}
+                                                        className="text-blue-600 hover:text-blue-900"
+                                                    >
+                                                        Edit
                                                     </button>
                                                 </td>
                                             </tr>
@@ -425,6 +535,129 @@
                                 </button>
                                 <button
                                     onClick={saveProvider}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Edit Facility Modal */}
+                {isEditingFacility && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto p-6">
+                            <h3 className="text-xl font-bold mb-4">
+                                Edit Facility
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Facility Name *</label>
+                                    <input
+                                        type="text"
+                                        value={facilityFormData.facility_name || ''}
+                                        onChange={(e) => setFacilityFormData({...facilityFormData, facility_name: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Address Line 1</label>
+                                    <input
+                                        type="text"
+                                        value={facilityFormData.address_line1 || ''}
+                                        onChange={(e) => setFacilityFormData({...facilityFormData, address_line1: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        placeholder="123 Main Street"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Address Line 2</label>
+                                    <input
+                                        type="text"
+                                        value={facilityFormData.address_line2 || ''}
+                                        onChange={(e) => setFacilityFormData({...facilityFormData, address_line2: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        placeholder="Suite 100"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">City *</label>
+                                        <input
+                                            type="text"
+                                            value={facilityFormData.city || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, city: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">State *</label>
+                                        <input
+                                            type="text"
+                                            value={facilityFormData.state || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, state: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            maxLength="2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Zip Code</label>
+                                        <input
+                                            type="text"
+                                            value={facilityFormData.zip_code || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, zip_code: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Phone</label>
+                                        <input
+                                            type="tel"
+                                            value={facilityFormData.phone || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, phone: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            placeholder="(555) 123-4567"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Email</label>
+                                        <input
+                                            type="email"
+                                            value={facilityFormData.email || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, email: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            placeholder="facility@example.com"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-4">
+                                    <p className="text-sm text-blue-800">
+                                        <strong>Tip:</strong> Updating the facility will automatically update all associated auctions with the new location information.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 flex justify-end space-x-3">
+                                <button
+                                    onClick={() => setIsEditingFacility(false)}
+                                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={saveFacility}
                                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                                 >
                                     Save
