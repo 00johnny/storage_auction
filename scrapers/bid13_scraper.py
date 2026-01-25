@@ -146,7 +146,6 @@ class Bid13Scraper(BaseScraper):
             if end_time_str.strip().isdigit():
                 try:
                     closes_at = datetime.fromtimestamp(int(end_time_str))
-                    print(f"Parsed Unix timestamp for auction {external_id}: {closes_at}")
                 except (ValueError, OSError) as e:
                     print(f"Warning: Could not parse Unix timestamp '{end_time_str}': {e}")
             else:
@@ -175,8 +174,6 @@ class Bid13Scraper(BaseScraper):
         # Method 2: If data-expiry is empty, try countdown timer
         if not closes_at and countdown_elem:
             closes_at = self._parse_countdown_timer(countdown_elem)
-            if closes_at:
-                print(f"Parsed end time from countdown timer for auction {external_id}: {closes_at}")
 
         # Skip auctions without end time - they're not useful
         if not closes_at:
@@ -214,6 +211,12 @@ class Bid13Scraper(BaseScraper):
             try:
                 parsed_url = urlparse(self.facility_url)
                 params = parse_qs(parsed_url.query)
+
+                # Debug once to see what's happening
+                if not hasattr(self, '_url_debug_logged'):
+                    print(f"URL fallback check - URL: {self.facility_url}")
+                    print(f"URL params found: {params}")
+                    self._url_debug_logged = True
 
                 if 'city' in params and params['city']:
                     city = params['city'][0]
