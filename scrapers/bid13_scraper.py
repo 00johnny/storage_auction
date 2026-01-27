@@ -190,7 +190,7 @@ class Bid13Scraper(BaseScraper):
                 facility_name = field_content.text.strip()
 
         # Extract address if available
-        address_elem = auction.find('div', class_='auc-address')
+        address_elem = auction.find('span', class_='auc-address')
         address = address_elem.text.strip() if address_elem else ''
 
         # Parse city and state from address
