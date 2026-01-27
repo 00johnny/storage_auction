@@ -460,6 +460,85 @@ def get_auction(auction_id):
         }), 500
 
 
+@app.route('/api/auctions/<auction_id>/refetch', methods=['POST'])
+@login_required
+def refetch_auction(auction_id):
+    """
+    Re-fetch auction from source (admin only)
+
+    This endpoint triggers a re-scrape of a specific auction from its original source.
+    Only accessible to admin users.
+    """
+    if not current_user.has_role('admin'):
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized. Admin access required.'
+        }), 403
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get auction and provider details
+        cursor.execute("""
+            SELECT
+                a.source_url,
+                a.external_auction_id,
+                a.provider_id,
+                p.name as provider_name,
+                p.source_url as provider_url
+            FROM auctions a
+            JOIN providers p ON a.provider_id = p.provider_id
+            WHERE a.auction_id = %s
+        """, (auction_id,))
+
+        auction = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not auction:
+            return jsonify({
+                'success': False,
+                'error': 'Auction not found'
+            }), 404
+
+        # Determine which scraper to use based on provider URL
+        provider_url = auction['provider_url']
+        provider_id = str(auction['provider_id'])
+
+        if 'bid13.com' in provider_url:
+            from scrapers.bid13_scraper import Bid13Scraper
+            scraper = Bid13Scraper(provider_id, provider_url)
+        elif 'storageauctions.com' in provider_url:
+            from scrapers.storageauctions_scraper import StorageAuctionsScraper
+            scraper = StorageAuctionsScraper(provider_id)
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'No scraper available for provider: {auction["provider_name"]}'
+            }), 400
+
+        # Run a full scrape (this will update existing auctions including this one)
+        # Note: We run a full scrape because individual auction scraping isn't implemented yet
+        result = scraper.run_scraper(full_scrape=True, dry_run=False)
+
+        return jsonify({
+            'success': True,
+            'message': f'Re-fetched auctions from {auction["provider_name"]}',
+            'result': {
+                'auctions_found': result.get('auctions_found', 0),
+                'auctions_added': result.get('auctions_added', 0),
+                'auctions_updated': result.get('auctions_updated', 0)
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error re-fetching auction: {str(e)}'
+        }), 500
+
+
 # ============================================================================
 # API Routes - Bids
 # ============================================================================

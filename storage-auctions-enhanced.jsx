@@ -26,6 +26,7 @@ const StorageAuctionApp = () => {
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'detail'
   const [selectedAuction, setSelectedAuction] = useState(null);
   const [allTags, setAllTags] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
 
@@ -93,6 +94,26 @@ const StorageAuctionApp = () => {
     };
 
     fetchData();
+  }, []);
+
+  // Check if user is authenticated (for admin features)
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+        const response = await fetch(`${apiBaseUrl}/api/auth/check`, {
+          credentials: 'include'
+        });
+        const data = await response.json();
+        if (data.authenticated) {
+          setCurrentUser(data.user);
+        }
+      } catch (error) {
+        console.error('Error checking authentication:', error);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   // OLD MOCK DATA BELOW (keeping for reference, but not used)
@@ -589,6 +610,40 @@ const StorageAuctionApp = () => {
                   <button className="w-full mt-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-3 rounded-lg transition-colors">
                     Add to Watchlist
                   </button>
+
+                  {/* Admin Tools (only visible to admins) */}
+                  {currentUser && currentUser.role === 'admin' && (
+                    <div className="mt-8 pt-6 border-t border-slate-200">
+                      <h3 className="font-semibold text-sm text-slate-700 mb-3">Admin Tools</h3>
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Re-fetch this auction from source? This will update all auctions from this provider.')) return;
+
+                          try {
+                            const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+                            const response = await fetch(`${apiBaseUrl}/api/auctions/${auction.id}/refetch`, {
+                              method: 'POST',
+                              credentials: 'include'
+                            });
+                            const result = await response.json();
+
+                            if (result.success) {
+                              alert(`Success! ${result.message}\n\nFound: ${result.result.auctions_found}\nAdded: ${result.result.auctions_added}\nUpdated: ${result.result.auctions_updated}`);
+                              window.location.reload();
+                            } else {
+                              alert('Error: ' + result.error);
+                            }
+                          } catch (error) {
+                            alert('Error re-fetching auction: ' + error.message);
+                          }
+                        }}
+                        className="w-full bg-slate-600 hover:bg-slate-700 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <span>🔄</span>
+                        Re-fetch from Source
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
