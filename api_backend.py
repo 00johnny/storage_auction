@@ -12,15 +12,17 @@ Environment Variables (create .env file):
     HUGGINGFACE_API_TOKEN=your-token
 """
 
-from flask import Flask, jsonify, request, send_from_directory, render_template
+from flask import Flask, jsonify, request, send_from_directory, render_template, session
 from flask_cors import CORS
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import json
 from dotenv import load_dotenv
+import bcrypt
 
 # Load environment variables from .env file
 load_dotenv()
@@ -30,12 +32,65 @@ load_dotenv()
 
 
 app = Flask(__name__, static_folder='.')
-CORS(app)  # Enable CORS for React frontend
+CORS(app, supports_credentials=True)  # Enable CORS with credentials for sessions
 
 # Configuration
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost/storage_auctions')
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:5000')
+
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login_page'
+
+# User class for Flask-Login
+class User(UserMixin):
+    def __init__(self, user_id, username, email, role, is_active=True):
+        self.id = user_id
+        self.username = username
+        self.email = email
+        self.role = role
+        self.is_active = is_active
+
+    def has_role(self, role):
+        """Check if user has specific role"""
+        if role == 'admin':
+            return self.role == 'admin'
+        elif role == 'power':
+            return self.role in ['admin', 'power']
+        else:
+            return True  # Everyone has 'regular' access
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Load user from database for Flask-Login"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT user_id, username, email, role, is_active
+            FROM users
+            WHERE user_id = %s
+        """, (user_id,))
+        user_data = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if user_data:
+            return User(
+                user_id=str(user_data['user_id']),
+                username=user_data['username'],
+                email=user_data['email'],
+                role=user_data['role'],
+                is_active=user_data['is_active']
+            )
+    except Exception as e:
+        print(f"Error loading user: {e}")
+    return None
 
 
 # ============================================================================
@@ -62,6 +117,137 @@ def serve_frontend():
 def serve_admin():
     """Serve the admin portal"""
     return render_template('admin.html', api_base_url=API_BASE_URL)
+
+@app.route('/login')
+def login_page():
+    """Serve the login page"""
+    return render_template('login.html', api_base_url=API_BASE_URL)
+
+
+# ============================================================================
+# API Routes - Authentication
+# ============================================================================
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Login endpoint"""
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'error': 'Username and password required'
+            }), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get user by username or email
+        cursor.execute("""
+            SELECT user_id, username, email, password_hash, role, is_active
+            FROM users
+            WHERE (username = %s OR email = %s) AND is_active = TRUE
+        """, (username, username))
+
+        user_data = cursor.fetchone()
+
+        if not user_data:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': 'Invalid username or password'
+            }), 401
+
+        # Verify password
+        if not bcrypt.checkpw(password.encode('utf-8'), user_data['password_hash'].encode('utf-8')):
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': 'Invalid username or password'
+            }), 401
+
+        # Update last login
+        cursor.execute("""
+            UPDATE users
+            SET last_login_at = CURRENT_TIMESTAMP,
+                login_count = login_count + 1
+            WHERE user_id = %s
+        """, (user_data['user_id'],))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        # Create user object and login
+        user = User(
+            user_id=str(user_data['user_id']),
+            username=user_data['username'],
+            email=user_data['email'],
+            role=user_data['role'],
+            is_active=user_data['is_active']
+        )
+        login_user(user, remember=True)
+
+        return jsonify({
+            'success': True,
+            'user': {
+                'user_id': str(user_data['user_id']),
+                'username': user_data['username'],
+                'email': user_data['email'],
+                'role': user_data['role']
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/auth/logout', methods=['POST'])
+@login_required
+def logout():
+    """Logout endpoint"""
+    logout_user()
+    return jsonify({'success': True})
+
+@app.route('/api/auth/me', methods=['GET'])
+@login_required
+def get_current_user():
+    """Get current logged in user"""
+    return jsonify({
+        'success': True,
+        'user': {
+            'user_id': current_user.id,
+            'username': current_user.username,
+            'email': current_user.email,
+            'role': current_user.role
+        }
+    })
+
+@app.route('/api/auth/check', methods=['GET'])
+def check_auth():
+    """Check if user is authenticated"""
+    if current_user.is_authenticated:
+        return jsonify({
+            'success': True,
+            'authenticated': True,
+            'user': {
+                'user_id': current_user.id,
+                'username': current_user.username,
+                'email': current_user.email,
+                'role': current_user.role
+            }
+        })
+    else:
+        return jsonify({
+            'success': True,
+            'authenticated': False
+        })
 
 
 # ============================================================================
