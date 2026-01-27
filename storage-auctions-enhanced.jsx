@@ -45,6 +45,7 @@ const StorageAuctionApp = () => {
           const mappedAuctions = auctionsData.auctions.map(auction => ({
             id: auction.auction_id,
             unitNumber: auction.unit_number,
+            facilityName: auction.facility_name || 'Unknown Facility',
             provider: auction.provider_name,
             city: auction.city,
             state: auction.state,
@@ -62,7 +63,9 @@ const StorageAuctionApp = () => {
             imageUrls: auction.image_urls || [],
             totalBids: auction.total_bids || 0,
             tags: auction.tags || [],
-            bidHistory: []
+            bidHistory: [],
+            sourceUrl: auction.source_url,
+            fullnessRating: auction.fullness_rating
           }));
 
           setAuctions(mappedAuctions);
@@ -518,7 +521,7 @@ const StorageAuctionApp = () => {
               <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 sticky top-8">
                 <div className="mb-6">
                   <h1 className="text-2xl font-bold text-slate-900 mb-2">
-                    Unit {auction.unitNumber}
+                    {auction.facilityName} - {auction.unitNumber}
                   </h1>
                   <div className="flex items-center gap-2 flex-wrap mb-4">
                     {auction.tags.map(tag => (
@@ -530,6 +533,18 @@ const StorageAuctionApp = () => {
                   <span className="bg-slate-100 text-slate-700 text-sm font-medium px-3 py-1.5 rounded-lg">
                     {auction.unitSize}
                   </span>
+                  {auction.fullnessRating && (
+                    <div className="mt-3">
+                      <p className="text-xs text-slate-600 mb-1">Estimated Fullness</p>
+                      <div className="flex items-center gap-1">
+                        {[1,2,3,4,5].map(star => (
+                          <span key={star} className={star <= auction.fullnessRating ? 'text-yellow-400' : 'text-gray-300'}>
+                            ⭐
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Current Bid */}
@@ -551,34 +566,25 @@ const StorageAuctionApp = () => {
                   </p>
                 </div>
 
-                {/* Bid Form */}
+                {/* Bidding Info */}
                 <div className="border-t border-slate-200 pt-6">
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Your Bid Amount
-                    </label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <input
-                        type="number"
-                        value={bidAmount}
-                        onChange={(e) => setBidAmount(e.target.value)}
-                        placeholder={`Min: ${auction.currentBid + auction.bidIncrement}`}
-                        className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500 mt-2">
-                      Minimum bid: ${auction.currentBid + auction.bidIncrement} (increment: ${auction.bidIncrement})
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-blue-800">
+                      To place a bid on this auction, visit the auction source website.
                     </p>
                   </div>
 
-                  <button
-                    onClick={handlePlaceBid}
-                    disabled={!bidAmount || parseFloat(bidAmount) < auction.currentBid + auction.bidIncrement}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors"
-                  >
-                    Place Bid
-                  </button>
+                  {auction.sourceUrl && (
+                    <a
+                      href={auction.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span>🔗</span>
+                      View on Source Site
+                    </a>
+                  )}
 
                   <button className="w-full mt-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-3 rounded-lg transition-colors">
                     Add to Watchlist
@@ -744,7 +750,15 @@ const StorageAuctionApp = () => {
                 {/* Header */}
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-bold text-lg text-slate-900">Unit {auction.unitNumber}</h3>
+                    <h3
+                      onClick={() => {
+                        setSelectedAuction(auction);
+                        setViewMode('detail');
+                      }}
+                      className="font-bold text-lg text-slate-900 cursor-pointer hover:text-blue-600 transition-colors"
+                    >
+                      {auction.facilityName} - {auction.unitNumber}
+                    </h3>
                     <p className="text-sm text-slate-600">{auction.provider}</p>
                   </div>
                   <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
@@ -801,9 +815,8 @@ const StorageAuctionApp = () => {
                     setSelectedAuction(auction);
                     setViewMode('detail');
                   }}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors"
                 >
-                  <Eye className="w-4 h-4" />
                   View Details
                 </button>
               </div>
