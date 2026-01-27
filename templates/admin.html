@@ -375,6 +375,29 @@
             }
         };
 
+        const purgeProviderAuctions = async (providerId, providerName) => {
+            if (!confirm(`⚠️ WARNING: This will DELETE ALL AUCTIONS for ${providerName}!\n\nThis action cannot be undone. You will need to re-scrape to get the auctions back.\n\nAre you absolutely sure?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}/auctions`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✓ ${result.message}\n\nYou can now re-scrape this provider to get fresh data.`);
+                    fetchProviders();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Purge error:', error);
+                alert('Error purging auctions: ' + error.message);
+            }
+        };
+
         return (
             <div className="min-h-screen bg-gray-100">
                 <nav className="bg-blue-600 text-white shadow-lg">
@@ -488,6 +511,13 @@
                                                         className="text-green-600 hover:text-green-900"
                                                     >
                                                         Scrape
+                                                    </button>
+                                                    <button
+                                                        onClick={() => purgeProviderAuctions(provider.provider_id, provider.name)}
+                                                        className="text-orange-600 hover:text-orange-900"
+                                                        title="Delete all auctions for this provider (useful for fixing bad source URLs)"
+                                                    >
+                                                        Purge
                                                     </button>
                                                     <button
                                                         onClick={() => deleteProvider(provider.provider_id)}

@@ -54,7 +54,12 @@ class User(UserMixin):
         self.username = username
         self.email = email
         self.role = role
-        self.is_active = is_active
+        self._is_active = is_active
+
+    @property
+    def is_active(self):
+        """Override UserMixin's is_active property"""
+        return self._is_active
 
     def has_role(self, role):
         """Check if user has specific role"""
@@ -1082,6 +1087,48 @@ def trigger_scrape(provider_id):
         return jsonify({
             'success': True,
             'scrape_result': result
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/providers/<provider_id>/auctions', methods=['DELETE'])
+@login_required
+def purge_provider_auctions(provider_id):
+    """Purge all auctions for a provider (admin only)"""
+    if not current_user.has_role('admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get count before deletion
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM auctions
+            WHERE provider_id = %s
+        """, (provider_id,))
+        result = cursor.fetchone()
+        auction_count = result['count'] if result else 0
+
+        # Delete all auctions for this provider
+        cursor.execute("""
+            DELETE FROM auctions
+            WHERE provider_id = %s
+        """, (provider_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': f'Deleted {auction_count} auctions for provider',
+            'deleted_count': auction_count
         })
 
     except Exception as e:
