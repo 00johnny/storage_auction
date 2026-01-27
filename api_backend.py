@@ -1010,6 +1010,223 @@ def trigger_scrape(provider_id):
 
 
 # ============================================================================
+# User Management Endpoints
+# ============================================================================
+
+@app.route('/api/users', methods=['GET'])
+@login_required
+def get_users():
+    """Get all users (admin only)"""
+    if not current_user.has_role('admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                user_id,
+                username,
+                email,
+                first_name,
+                last_name,
+                role,
+                is_active,
+                email_verified,
+                last_login_at,
+                login_count,
+                created_at
+            FROM users
+            ORDER BY created_at DESC
+        """)
+
+        users = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'users': users
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/users', methods=['POST'])
+def create_user():
+    """Create new user"""
+    try:
+        data = request.get_json()
+
+        # Validate required fields
+        required = ['username', 'email', 'password']
+        for field in required:
+            if not data.get(field):
+                return jsonify({
+                    'success': False,
+                    'error': f'Missing required field: {field}'
+                }), 400
+
+        # Check if username or email already exists
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT user_id FROM users
+            WHERE username = %s OR email = %s
+        """, (data['username'], data['email']))
+
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': 'Username or email already exists'
+            }), 400
+
+        # Hash password
+        password_hash = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        # Insert user
+        cursor.execute("""
+            INSERT INTO users (
+                username,
+                email,
+                password_hash,
+                first_name,
+                last_name,
+                role,
+                is_active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING user_id, username, email, role
+        """, (
+            data['username'],
+            data['email'],
+            password_hash,
+            data.get('first_name', ''),
+            data.get('last_name', ''),
+            data.get('role', 'regular'),
+            data.get('is_active', True)
+        ))
+
+        user = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'user': user
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/users/<user_id>', methods=['PUT'])
+@login_required
+def update_user(user_id):
+    """Update user (admin only)"""
+    if not current_user.has_role('admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        data = request.get_json()
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Build update query dynamically
+        update_fields = []
+        values = []
+
+        if 'email' in data:
+            update_fields.append('email = %s')
+            values.append(data['email'])
+        if 'first_name' in data:
+            update_fields.append('first_name = %s')
+            values.append(data['first_name'])
+        if 'last_name' in data:
+            update_fields.append('last_name = %s')
+            values.append(data['last_name'])
+        if 'role' in data:
+            update_fields.append('role = %s')
+            values.append(data['role'])
+        if 'is_active' in data:
+            update_fields.append('is_active = %s')
+            values.append(data['is_active'])
+        if 'password' in data and data['password']:
+            password_hash = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            update_fields.append('password_hash = %s')
+            values.append(password_hash)
+
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No fields to update'}), 400
+
+        update_fields.append('updated_at = CURRENT_TIMESTAMP')
+        values.append(user_id)
+
+        query = f"UPDATE users SET {', '.join(update_fields)} WHERE user_id = %s"
+        cursor.execute(query, values)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'User updated successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/users/<user_id>', methods=['DELETE'])
+@login_required
+def delete_user(user_id):
+    """Delete user (admin only)"""
+    if not current_user.has_role('admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        # Prevent deleting self
+        if current_user.id == user_id:
+            return jsonify({
+                'success': False,
+                'error': 'Cannot delete your own account'
+            }), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'User deleted successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# ============================================================================
 # Facilities Endpoints
 # ============================================================================
 
@@ -1156,6 +1373,50 @@ def update_facility(facility_id):
         return jsonify({
             'success': True,
             'message': 'Facility updated successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/facilities/<facility_id>', methods=['DELETE'])
+@login_required
+def delete_facility(facility_id):
+    """Delete a facility (admin only)"""
+    if not current_user.has_role('admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Check if facility has active auctions
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM auctions
+            WHERE facility_id = %s AND status = 'active'
+        """, (facility_id,))
+
+        result = cursor.fetchone()
+        if result and result['count'] > 0:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': f'Cannot delete facility with {result["count"]} active auctions'
+            }), 400
+
+        # Delete facility
+        cursor.execute("DELETE FROM facilities WHERE facility_id = %s", (facility_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'Facility deleted successfully'
         })
 
     except Exception as e:
