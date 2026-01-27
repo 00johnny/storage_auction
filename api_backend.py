@@ -10,9 +10,14 @@ Environment Variables (create .env file):
     DATABASE_URL=postgresql://user:password@localhost:5432/storage_auctions
     SECRET_KEY=your-secret-key
     HUGGINGFACE_API_TOKEN=your-token
+
+    # HTTP Basic Auth (optional - for testing/staging protection)
+    ENABLE_BASIC_AUTH=true
+    BASIC_AUTH_USERNAME=admin
+    BASIC_AUTH_PASSWORD=your-password
 """
 
-from flask import Flask, jsonify, request, send_from_directory, render_template, session
+from flask import Flask, jsonify, request, send_from_directory, render_template, session, Response
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import psycopg2
@@ -23,6 +28,7 @@ from typing import List, Dict, Optional
 import json
 from dotenv import load_dotenv
 import bcrypt
+from functools import wraps
 
 # Load environment variables from .env file
 load_dotenv()
@@ -41,6 +47,45 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost/storage_auctions')
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:5000')
+
+# HTTP Basic Auth Configuration
+ENABLE_BASIC_AUTH = os.getenv('ENABLE_BASIC_AUTH', 'false').lower() == 'true'
+BASIC_AUTH_USERNAME = os.getenv('BASIC_AUTH_USERNAME', 'admin')
+BASIC_AUTH_PASSWORD = os.getenv('BASIC_AUTH_PASSWORD', 'changeme')
+
+def check_basic_auth(username, password):
+    """Check if username/password combination is valid"""
+    return username == BASIC_AUTH_USERNAME and password == BASIC_AUTH_PASSWORD
+
+def authenticate():
+    """Send 401 response that enables basic auth"""
+    return Response(
+        'Authentication required. Please provide valid credentials.',
+        401,
+        {'WWW-Authenticate': 'Basic realm="Storage Auction Platform - Protected Access"'}
+    )
+
+def requires_basic_auth(f):
+    """Decorator for routes that require HTTP Basic Auth"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not ENABLE_BASIC_AUTH:
+            return f(*args, **kwargs)
+
+        auth = request.authorization
+        if not auth or not check_basic_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
+
+# Apply basic auth to all requests if enabled
+@app.before_request
+def before_request_basic_auth():
+    """Check basic auth on every request if enabled"""
+    if ENABLE_BASIC_AUTH:
+        auth = request.authorization
+        if not auth or not check_basic_auth(auth.username, auth.password):
+            return authenticate()
 
 # Flask-Login setup
 login_manager = LoginManager()
