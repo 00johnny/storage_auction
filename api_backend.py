@@ -688,9 +688,12 @@ def get_providers():
         active_only = request.args.get('active_only', 'true').lower() == 'true'
 
         query = """
-            SELECT p.*, COUNT(a.auction_id) as active_auctions
+            SELECT p.*,
+                   COUNT(DISTINCT a.auction_id) as active_auctions,
+                   COUNT(DISTINCT f.facility_id) as facility_count
             FROM providers p
             LEFT JOIN auctions a ON p.provider_id = a.provider_id AND a.status = 'active'
+            LEFT JOIN facilities f ON p.provider_id = f.provider_id
             WHERE 1=1
         """
         params = []

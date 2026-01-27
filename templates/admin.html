@@ -61,6 +61,7 @@
         const [facilityFormData, setFacilityFormData] = useState({});
         const [testScrapeResults, setTestScrapeResults] = useState(null);
         const [showTestResults, setShowTestResults] = useState(false);
+        const [providerFilter, setProviderFilter] = useState(null);
 
         // Fetch providers
         const fetchProviders = () => {
@@ -169,6 +170,11 @@
                 console.error('Delete error:', error);
                 alert('Error deleting provider: ' + error.message);
             }
+        };
+
+        const viewProviderFacilities = (provider) => {
+            setProviderFilter(provider.provider_id);
+            setActiveTab('facilities');
         };
 
         const triggerScrape = async (providerId) => {
@@ -339,6 +345,13 @@
                                                         Edit
                                                     </button>
                                                     <button
+                                                        onClick={() => viewProviderFacilities(provider)}
+                                                        className="text-indigo-600 hover:text-indigo-900"
+                                                        title="View facilities for this provider"
+                                                    >
+                                                        Facilities ({provider.facility_count || 0})
+                                                    </button>
+                                                    <button
                                                         onClick={() => testScrape(provider.provider_id)}
                                                         className="text-purple-600 hover:text-purple-900"
                                                         title="Test scrape without saving to database"
@@ -370,7 +383,22 @@
                     {activeTab === 'facilities' && (
                         <div>
                             <div className="mb-6 flex justify-between items-center">
-                                <h2 className="text-2xl font-bold">Facilities ({facilities.length})</h2>
+                                <h2 className="text-2xl font-bold">
+                                    Facilities ({providerFilter ? facilities.filter(f => f.provider_id === providerFilter).length : facilities.length})
+                                    {providerFilter && (
+                                        <span className="text-sm font-normal text-gray-600 ml-2">
+                                            (filtered by provider)
+                                        </span>
+                                    )}
+                                </h2>
+                                {providerFilter && (
+                                    <button
+                                        onClick={() => setProviderFilter(null)}
+                                        className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                                    >
+                                        Clear Filter
+                                    </button>
+                                )}
                             </div>
 
                             {/* Facility List */}
@@ -387,7 +415,9 @@
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
-                                        {facilities.map(facility => (
+                                        {facilities
+                                            .filter(facility => !providerFilter || facility.provider_id === providerFilter)
+                                            .map(facility => (
                                             <tr key={facility.facility_id} className="hover:bg-gray-50">
                                                 <td className="px-6 py-4">
                                                     <div className="text-sm font-medium text-gray-900">{facility.facility_name}</div>
