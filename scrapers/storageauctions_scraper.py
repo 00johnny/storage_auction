@@ -173,11 +173,27 @@ class StorageAuctionsScraper(BaseScraper):
         if not auction_id:
             return None
 
+        # Create or get facility record
+        facility_data = {
+            'facility_name': facility,
+            'city': city,
+            'state': state,
+            'address_line1': address.split(',')[0] if address else '',
+            'zip_code': zip_code
+        }
+        facility_id = self.get_or_create_facility(facility_data)
+
+        # Log summary for first auction only (to verify parsing is working)
+        if not hasattr(self, '_first_auction_logged'):
+            print(f"Sample auction parsed: Unit-{auction_id} at {facility} in {city}, {state}")
+            self._first_auction_logged = True
+
         return {
             'external_auction_id': auction_id,
             'unit_number': f"Unit-{auction_id}",  # No specific unit number provided
             'unit_size': unit_size,
             'description': f'Storage auction at {facility}',
+            'facility_id': facility_id,
             'facility_name': facility,
             'address_line1': address.split(',')[0] if address else '',
             'city': city,
