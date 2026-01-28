@@ -23,6 +23,8 @@ const StorageAuctionApp = () => {
   const [selectedProvider, setSelectedProvider] = useState('all');
   const [selectedTags, setSelectedTags] = useState([]);
   const [sortBy, setSortBy] = useState('closing-soon');
+  const [zipcode, setZipcode] = useState('');
+  const [maxDistance, setMaxDistance] = useState('');
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'detail'
   const [selectedAuction, setSelectedAuction] = useState(null);
   const [allTags, setAllTags] = useState([]);
@@ -37,8 +39,23 @@ const StorageAuctionApp = () => {
         // Get API base URL from injected config and normalize (remove trailing slash)
         const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
 
+        // Build query parameters for distance filtering
+        let queryParams = new URLSearchParams();
+        if (zipcode) {
+          queryParams.append('zipcode', zipcode);
+          if (maxDistance) {
+            queryParams.append('distance', maxDistance);
+          }
+        }
+        if (sortBy === 'distance' && zipcode) {
+          queryParams.append('sort', 'distance');
+        }
+
+        const queryString = queryParams.toString();
+        const auctionsUrl = queryString ? `${apiBaseUrl}/api/auctions?${queryString}` : `${apiBaseUrl}/api/auctions`;
+
         // Fetch auctions
-        const auctionsResponse = await fetch(`${apiBaseUrl}/api/auctions`);
+        const auctionsResponse = await fetch(auctionsUrl);
         const auctionsData = await auctionsResponse.json();
 
         if (auctionsData.success) {
@@ -66,7 +83,8 @@ const StorageAuctionApp = () => {
             tags: auction.tags || [],
             bidHistory: [],
             sourceUrl: auction.source_url,
-            fullnessRating: auction.fullness_rating
+            fullnessRating: auction.fullness_rating,
+            distanceMiles: auction.distance_miles
           }));
 
           setAuctions(mappedAuctions);
@@ -94,7 +112,7 @@ const StorageAuctionApp = () => {
     };
 
     fetchData();
-  }, []);
+  }, [zipcode, maxDistance, sortBy]);
 
   // Check if user is authenticated (for admin features)
   useEffect(() => {
@@ -931,7 +949,52 @@ const StorageAuctionApp = () => {
               <option value="closing-soon">Closing Soon</option>
               <option value="highest-bid">Highest Bid</option>
               <option value="lowest-bid">Lowest Bid</option>
+              {zipcode && <option value="distance">Nearest First</option>}
             </select>
+          </div>
+
+          {/* Distance Search Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-200">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                📍 Search by ZIP Code
+              </label>
+              <input
+                type="text"
+                placeholder="Enter ZIP code (e.g., 95672)"
+                value={zipcode}
+                onChange={(e) => setZipcode(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                maxLength="5"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                📏 Max Distance (miles)
+              </label>
+              <input
+                type="number"
+                placeholder="e.g., 50"
+                value={maxDistance}
+                onChange={(e) => setMaxDistance(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                min="1"
+                disabled={!zipcode}
+              />
+            </div>
+            <div className="flex items-end">
+              {zipcode && (
+                <button
+                  onClick={() => {
+                    setZipcode('');
+                    setMaxDistance('');
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors font-medium"
+                >
+                  Clear Location Search
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Tag Cloud */}
@@ -1023,6 +1086,11 @@ const StorageAuctionApp = () => {
                 <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
                   <MapPin className="w-4 h-4" />
                   <span>{auction.city}, {auction.state} {auction.zipCode}</span>
+                  {auction.distanceMiles && (
+                    <span className="ml-auto text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-semibold">
+                      {auction.distanceMiles} mi
+                    </span>
+                  )}
                 </div>
 
                 {/* Description */}

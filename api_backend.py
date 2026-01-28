@@ -1784,11 +1784,13 @@ def bulk_delete_empty_facilities():
         count = len(facility_ids)
 
         if count > 0:
-            # Delete all empty facilities
-            cursor.execute("""
+            # Delete all empty facilities using IN clause
+            # Note: Can't use ANY(%s) with UUID array directly, need to use IN with placeholders
+            placeholders = ','.join(['%s'] * len(facility_ids))
+            cursor.execute(f"""
                 DELETE FROM facilities
-                WHERE facility_id = ANY(%s)
-            """, (facility_ids,))
+                WHERE facility_id IN ({placeholders})
+            """, facility_ids)
             conn.commit()
 
         cursor.close()
