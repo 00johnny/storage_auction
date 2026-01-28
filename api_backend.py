@@ -35,6 +35,7 @@ load_dotenv()
 
 # Import our helper modules
 # from image_analysis_geocoding import GeocodeService, ImageAnalysisService
+from geocoding_helper import SimpleGeocoder, calculate_distance
 
 
 app = Flask(__name__, static_folder='.')
@@ -308,23 +309,40 @@ def check_auth():
 def get_auctions():
     """
     Get all active auctions with optional filtering
-    
+
     Query Parameters:
         state: Filter by state (default: CA)
         city: Filter by city
         tags: Comma-separated tag names
         search: Search term for description/title
-        sort: Sort by (closing-soon, highest-bid, lowest-bid)
+        sort: Sort by (closing-soon, highest-bid, lowest-bid, distance)
         limit: Max results (default: 50)
         offset: Pagination offset (default: 0)
+        zipcode: User's ZIP code for distance filtering
+        distance: Max distance in miles from zipcode (requires zipcode)
     """
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
+        # Check for distance filtering parameters
+        user_zipcode = request.args.get('zipcode')
+        max_distance = request.args.get('distance', type=float)
+        user_coords = None
+
+        # Geocode user's location if zipcode provided
+        if user_zipcode:
+            geocoder = SimpleGeocoder()
+            user_coords = geocoder.geocode_zipcode(user_zipcode)
+            if not user_coords:
+                return jsonify({
+                    'success': False,
+                    'error': f'Unable to geocode ZIP code: {user_zipcode}'
+                }), 400
+
         # Build query with filters
         query = """
-            SELECT 
+            SELECT
                 a.*,
                 p.name as provider_name,
                 STRING_AGG(t.tag_name, ',') as tags,
@@ -337,82 +355,126 @@ def get_auctions():
             LEFT JOIN bids b ON a.auction_id = b.auction_id
             WHERE a.status = 'active' AND a.closes_at > CURRENT_TIMESTAMP
         """
-        
+
         params = []
-        
-        # State filter
-        state = request.args.get('state', 'CA')
-        query += " AND a.state = %s"
-        params.append(state)
-        
+
+        # State filter (only if no zipcode provided)
+        if not user_zipcode:
+            state = request.args.get('state', 'CA')
+            query += " AND a.state = %s"
+            params.append(state)
+
         # City filter
         city = request.args.get('city')
         if city:
             query += " AND a.city = %s"
             params.append(city)
-        
+
         # Search filter
         search = request.args.get('search')
         if search:
             query += " AND (a.description ILIKE %s OR a.unit_number ILIKE %s)"
             search_pattern = f"%{search}%"
             params.extend([search_pattern, search_pattern])
-        
+
         # Group by
         query += """
             GROUP BY a.auction_id, p.name
         """
-        
+
         # Tag filter (after GROUP BY)
         tags = request.args.get('tags')
         if tags:
             tag_list = tags.split(',')
             query += f" HAVING STRING_AGG(t.tag_name, ',') LIKE %s"
             params.append(f"%{tag_list[0]}%")  # Simplified - improve for multiple tags
-        
-        # Sorting
+
+        # Sorting (unless sorting by distance, which we'll do in Python)
         sort = request.args.get('sort', 'closing-soon')
-        if sort == 'highest-bid':
-            query += " ORDER BY a.current_bid DESC"
-        elif sort == 'lowest-bid':
-            query += " ORDER BY a.current_bid ASC"
-        else:  # closing-soon
-            query += " ORDER BY a.closes_at ASC"
-        
-        # Pagination
+        if sort != 'distance':
+            if sort == 'highest-bid':
+                query += " ORDER BY a.current_bid DESC"
+            elif sort == 'lowest-bid':
+                query += " ORDER BY a.current_bid ASC"
+            else:  # closing-soon
+                query += " ORDER BY a.closes_at ASC"
+
+        # Pagination (we'll apply after distance filtering if needed)
         limit = int(request.args.get('limit', 50))
         offset = int(request.args.get('offset', 0))
-        query += " LIMIT %s OFFSET %s"
-        params.extend([limit, offset])
-        
+
+        # If not using distance filtering, apply pagination in SQL
+        if not user_coords:
+            query += " LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+
         cursor.execute(query, params)
         auctions = cursor.fetchall()
-        
+
         # Convert to list of dicts and process
         result = []
+        geocoder = SimpleGeocoder() if user_coords else None
+
         for auction in auctions:
             auction_dict = dict(auction)
-            
+
+            # Calculate distance if user location provided
+            if user_coords:
+                auction_city = auction_dict.get('city')
+                auction_state = auction_dict.get('state')
+                auction_zip = auction_dict.get('zip_code')
+
+                # Try to geocode auction location
+                auction_coords = None
+                if auction_zip:
+                    auction_coords = geocoder.geocode_zipcode(auction_zip)
+                if not auction_coords and auction_city and auction_state:
+                    auction_coords = geocoder.geocode_city_state(auction_city, auction_state)
+
+                if auction_coords:
+                    distance = calculate_distance(
+                        user_coords[0], user_coords[1],
+                        auction_coords[0], auction_coords[1]
+                    )
+                    auction_dict['distance_miles'] = round(distance, 1)
+
+                    # Filter by max distance if specified
+                    if max_distance and distance > max_distance:
+                        continue
+                else:
+                    # Skip auctions we couldn't geocode when distance filtering is active
+                    if max_distance:
+                        continue
+                    auction_dict['distance_miles'] = None
+
             # Parse JSON fields
             if auction_dict.get('image_urls'):
                 auction_dict['image_urls'] = json.loads(auction_dict['image_urls'])
-            
+
             # Convert tags string to list
             if auction_dict.get('tags'):
                 auction_dict['tags'] = auction_dict['tags'].split(',')
             else:
                 auction_dict['tags'] = []
-            
+
             # Convert datetime to ISO string
             for field in ['closes_at', 'starts_at', 'created_at']:
                 if auction_dict.get(field):
                     auction_dict[field] = auction_dict[field].isoformat()
-            
+
             result.append(auction_dict)
-        
+
+        # Sort by distance if requested
+        if sort == 'distance' and user_coords:
+            result.sort(key=lambda x: x.get('distance_miles') if x.get('distance_miles') is not None else float('inf'))
+
+        # Apply pagination after distance filtering
+        if user_coords:
+            result = result[offset:offset + limit]
+
         cursor.close()
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'count': len(result),
@@ -1688,6 +1750,54 @@ def delete_facility(facility_id):
         return jsonify({
             'success': True,
             'message': 'Facility deleted successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/facilities/bulk-delete-empty', methods=['POST'])
+@login_required
+def bulk_delete_empty_facilities():
+    """Delete all facilities with no active auctions (admin only)"""
+    if not current_user.has_role('admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Find facilities with no active auctions
+        cursor.execute("""
+            SELECT f.facility_id, f.facility_name
+            FROM facilities f
+            LEFT JOIN auctions a ON f.facility_id = a.facility_id AND a.status = 'active'
+            GROUP BY f.facility_id, f.facility_name
+            HAVING COUNT(a.auction_id) = 0
+        """)
+
+        empty_facilities = cursor.fetchall()
+        facility_ids = [f['facility_id'] for f in empty_facilities]
+        count = len(facility_ids)
+
+        if count > 0:
+            # Delete all empty facilities
+            cursor.execute("""
+                DELETE FROM facilities
+                WHERE facility_id = ANY(%s)
+            """, (facility_ids,))
+            conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': f'Deleted {count} empty facilities',
+            'deleted_count': count
         })
 
     except Exception as e:

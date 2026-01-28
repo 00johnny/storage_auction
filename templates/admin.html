@@ -398,6 +398,38 @@
             }
         };
 
+        const bulkDeleteEmptyFacilities = async () => {
+            // First get count
+            const emptyCount = facilities.filter(f => f.auction_count === 0).length;
+
+            if (emptyCount === 0) {
+                alert('No empty facilities to delete!');
+                return;
+            }
+
+            if (!confirm(`⚠️ WARNING: This will DELETE ${emptyCount} EMPTY FACILITIES!\n\nEmpty facilities are those with 0 active auctions.\n\nThis action cannot be undone.\n\nAre you sure?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/facilities/bulk-delete-empty`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✓ ${result.message}`);
+                    fetchFacilities();
+                    fetchProviders(); // Refresh provider facility counts
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Bulk delete error:', error);
+                alert('Error deleting empty facilities: ' + error.message);
+            }
+        };
+
         return (
             <div className="min-h-screen bg-gray-100">
                 <nav className="bg-blue-600 text-white shadow-lg">
@@ -546,14 +578,23 @@
                                         </span>
                                     )}
                                 </h2>
-                                {providerFilter && (
+                                <div className="flex gap-2">
+                                    {providerFilter && (
+                                        <button
+                                            onClick={() => setProviderFilter(null)}
+                                            className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                                        >
+                                            Clear Filter
+                                        </button>
+                                    )}
                                     <button
-                                        onClick={() => setProviderFilter(null)}
-                                        className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                                        onClick={bulkDeleteEmptyFacilities}
+                                        className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700"
+                                        title="Delete all facilities with 0 auctions"
                                     >
-                                        Clear Filter
+                                        🗑️ Delete Empty ({facilities.filter(f => f.auction_count === 0).length})
                                     </button>
-                                )}
+                                </div>
                             </div>
 
                             {/* Facility List */}
