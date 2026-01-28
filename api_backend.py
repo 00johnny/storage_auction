@@ -36,6 +36,7 @@ load_dotenv()
 # Import our helper modules
 # from image_analysis_geocoding import GeocodeService, ImageAnalysisService
 from geocoding_helper import SimpleGeocoder, calculate_distance
+from image_analysis import ImageAnalysisService
 
 
 app = Flask(__name__, static_folder='.')
@@ -745,6 +746,102 @@ def refetch_auction(auction_id):
         return jsonify({
             'success': False,
             'error': f'Error re-fetching auction: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auctions/<auction_id>/analyze-images', methods=['POST'])
+@login_required
+def analyze_auction_images(auction_id):
+    """
+    Analyze auction images using AI (admin only)
+
+    Uses AI to:
+    - Generate detailed description of visible items
+    - Estimate fullness (0-100%)
+    - Identify item categories
+    - Detect potentially valuable items
+
+    Only accessible to admin users.
+    """
+    if not current_user.has_role('admin'):
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized. Admin access required.'
+        }), 403
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get auction image URLs
+        cursor.execute("""
+            SELECT auction_id, image_urls
+            FROM auctions
+            WHERE auction_id = %s
+        """, (auction_id,))
+
+        auction = cursor.fetchone()
+
+        if not auction:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': 'Auction not found'
+            }), 404
+
+        # Parse image URLs
+        image_urls = []
+        if auction['image_urls']:
+            try:
+                image_urls = json.loads(auction['image_urls'])
+            except:
+                image_urls = auction['image_urls'] if isinstance(auction['image_urls'], list) else []
+
+        if not image_urls:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': 'No images available for this auction'
+            }), 400
+
+        # Get AI provider from request or use default
+        data = request.get_json() or {}
+        provider = data.get('provider', 'huggingface')
+
+        # Analyze images
+        print(f"Analyzing {len(image_urls)} images for auction {auction_id} using {provider}")
+        analyzer = ImageAnalysisService(provider=provider)
+        analysis = analyzer.analyze_multiple_images(image_urls)
+
+        # Update auction with analysis results
+        cursor.execute("""
+            UPDATE auctions
+            SET ai_description = %s,
+                fullness_rating = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE auction_id = %s
+        """, (
+            analysis['description'],
+            analysis['fullness_rating'],
+            auction_id
+        ))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'Images analyzed successfully',
+            'analysis': analysis
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error analyzing images: {str(e)}'
         }), 500
 
 

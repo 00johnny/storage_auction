@@ -573,14 +573,16 @@ const StorageAuctionApp = () => {
                     {auction.unitSize}
                   </span>
                   {auction.fullnessRating && (
-                    <div className="mt-3">
-                      <p className="text-xs text-slate-600 mb-1">Estimated Fullness</p>
-                      <div className="flex items-center gap-1">
-                        {[1,2,3,4,5].map(star => (
-                          <span key={star} className={star <= auction.fullnessRating ? 'text-yellow-400' : 'text-gray-300'}>
-                            ⭐
-                          </span>
-                        ))}
+                    <div className="mt-3 bg-blue-50 rounded-lg p-2">
+                      <p className="text-xs text-slate-600 mb-1">🤖 AI Fullness Estimate</p>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-slate-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all"
+                            style={{width: `${auction.fullnessRating}%`}}
+                          ></div>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-700">{auction.fullnessRating}%</span>
                       </div>
                     </div>
                   )}
@@ -665,6 +667,43 @@ const StorageAuctionApp = () => {
                       >
                         <span>🔄</span>
                         Re-fetch Detail from Source
+                      </button>
+
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Analyze auction images with AI?\n\nThis will:\n• Generate detailed item description\n• Estimate fullness (0-100%)\n• Identify item categories\n• Detect valuable items')) return;
+
+                          try {
+                            const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+                            const response = await fetch(`${apiBaseUrl}/api/auctions/${auction.id}/analyze-images`, {
+                              method: 'POST',
+                              credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ provider: 'huggingface' })
+                            });
+                            const result = await response.json();
+
+                            if (result.success) {
+                              const analysis = result.analysis;
+                              alert(`✓ Images Analyzed!\n\n` +
+                                    `Description: ${analysis.description}\n\n` +
+                                    `Fullness: ${analysis.fullness_rating}%\n` +
+                                    `Condition: ${analysis.condition}\n` +
+                                    `Items: ${analysis.items.join(', ') || 'None detected'}\n` +
+                                    `Categories: ${analysis.categories.join(', ') || 'None'}\n` +
+                                    `Valuable items: ${analysis.valuable_items ? 'Yes' : 'No'}`);
+                              window.location.reload();
+                            } else {
+                              alert('Error: ' + result.error);
+                            }
+                          } catch (error) {
+                            alert('Error analyzing images: ' + error.message);
+                          }
+                        }}
+                        className="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <span>🤖</span>
+                        Analyze Images with AI
                       </button>
                     </div>
                   )}
