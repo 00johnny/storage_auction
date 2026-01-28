@@ -332,7 +332,7 @@ def get_auctions():
 
         # Geocode user's location if zipcode provided
         if user_zipcode:
-            geocoder = SimpleGeocoder()
+            geocoder = SimpleGeocoder(db_connection=conn)
             user_coords = geocoder.geocode_zipcode(user_zipcode)
             if not user_coords:
                 return jsonify({
@@ -413,7 +413,7 @@ def get_auctions():
 
         # Convert to list of dicts and process
         result = []
-        geocoder = SimpleGeocoder() if user_coords else None
+        geocoder = SimpleGeocoder(db_connection=conn) if user_coords else None
 
         for auction in auctions:
             auction_dict = dict(auction)
