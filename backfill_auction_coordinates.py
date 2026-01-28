@@ -104,15 +104,40 @@ def backfill_coordinates(limit: int = None, dry_run: bool = False):
             # Try geocoding by ZIP code first, fallback to city/state
             coords = None
 
+            # Validate and clean zip code
             if zip_code:
-                coords = geocoder.geocode_zipcode(zip_code)
-                if coords:
-                    print(f"(ZIP: {zip_code})", end=" ")
+                # Skip invalid zipcodes
+                if zip_code in ['00000', '99999', 'N/A', 'Unknown']:
+                    print(f"(Invalid ZIP: {zip_code}, using city/state)", end=" ")
+                    zip_code = None
+                else:
+                    # Try to use zipcode
+                    try:
+                        coords = geocoder.geocode_zipcode(zip_code)
+                        if coords:
+                            print(f"(ZIP: {zip_code})", end=" ")
+                    except Exception as zip_error:
+                        # Network error or API issue with zipcode, try city/state
+                        print(f"(ZIP failed, trying city/state)", end=" ")
+                        coords = None
 
+            # Fallback to city/state if no zip or zip failed
             if not coords:
-                coords = geocoder.geocode_city_state(city, state)
-                if coords:
-                    print(f"(City/State)", end=" ")
+                try:
+                    coords = geocoder.geocode_city_state(city, state)
+                    if coords:
+                        print(f"(City/State)", end=" ")
+                except Exception as city_error:
+                    # Check if it's a network error
+                    if "Network is unreachable" in str(city_error) or "NewConnectionError" in str(city_error):
+                        print(f"→ Network error, skipping remaining ✗")
+                        print("\n\n⚠️  Network connection to nominatim.openstreetmap.org failed.")
+                        print("Please check your internet connection and try again.")
+                        break
+                    else:
+                        print(f"→ Geocoding failed ✗")
+                        stats['failed'] += 1
+                        continue
 
             if coords:
                 lat, lon = coords
@@ -134,9 +159,19 @@ def backfill_coordinates(limit: int = None, dry_run: bool = False):
                 print("→ Could not geocode ✗")
                 stats['failed'] += 1
 
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Interrupted by user")
+            break
         except Exception as e:
-            print(f"→ Error: {e} ✗")
-            stats['failed'] += 1
+            error_msg = str(e)
+            # Check for network errors
+            if "Network is unreachable" in error_msg or "NewConnectionError" in error_msg:
+                print(f"→ Network error ✗")
+                print("\n\n⚠️  Network connection lost. Stopping.")
+                break
+            else:
+                print(f"→ Error: {e} ✗")
+                stats['failed'] += 1
 
     # Print summary
     print("\n" + "=" * 60)
