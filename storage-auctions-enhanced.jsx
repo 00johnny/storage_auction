@@ -617,7 +617,7 @@ const StorageAuctionApp = () => {
                       <h3 className="font-semibold text-sm text-slate-700 mb-3">Admin Tools</h3>
                       <button
                         onClick={async () => {
-                          if (!confirm('Re-fetch this auction from source? This will update all auctions from this provider.')) return;
+                          if (!confirm('Re-fetch this auction detail from source?\n\nThis will update:\n• Full description\n• Tags/categories\n• Images\n• Current bid\n• Other detail-page data')) return;
 
                           try {
                             const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
@@ -628,7 +628,13 @@ const StorageAuctionApp = () => {
                             const result = await response.json();
 
                             if (result.success) {
-                              alert(`Success! ${result.message}\n\nFound: ${result.result.auctions_found}\nAdded: ${result.result.auctions_added}\nUpdated: ${result.result.auctions_updated}`);
+                              const data = result.data;
+                              alert(`✓ ${result.message}\n\n` +
+                                    `Description: ${data.description_updated ? 'Updated' : 'No change'}\n` +
+                                    `Images: ${data.images_found} found\n` +
+                                    `Tags: ${data.tags_found} found\n` +
+                                    `Fields updated: ${data.fields_updated}\n` +
+                                    `Current bid: $${data.current_bid || 'N/A'}`);
                               window.location.reload();
                             } else {
                               alert('Error: ' + result.error);
@@ -640,7 +646,7 @@ const StorageAuctionApp = () => {
                         className="w-full bg-slate-600 hover:bg-slate-700 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                       >
                         <span>🔄</span>
-                        Re-fetch from Source
+                        Re-fetch Detail from Source
                       </button>
                     </div>
                   )}

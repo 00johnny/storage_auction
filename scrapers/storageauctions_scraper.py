@@ -221,6 +221,116 @@ class StorageAuctionsScraper(BaseScraper):
         all_auctions = self.scrape_all()
         return [a for a in all_auctions if a['external_auction_id'] in auction_ids]
 
+    def scrape_auction_detail(self, auction_url: str) -> Dict:
+        """
+        Scrape detailed information from a single auction detail page
+
+        Fetches additional data not available on listing pages:
+        - Full description
+        - Additional images
+        - Detailed unit information
+
+        Args:
+            auction_url: Full URL to the auction detail page
+
+        Returns:
+            Dictionary with detailed auction data
+        """
+        try:
+            # Ensure URL is complete
+            if not auction_url.startswith('http'):
+                auction_url = f"https://www.storageauctions.com{auction_url}"
+
+            response = requests.get(auction_url, headers=self.headers)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"Error fetching auction detail page: {e}")
+            return {}
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        detail_data = {}
+
+        # Extract auction ID from URL or page
+        # Try to find auction ID in the page
+        auction_id_elem = soup.find('input', {'name': 'auction_id'}) or soup.find('div', {'data-auction-id': True})
+        if auction_id_elem:
+            detail_data['external_auction_id'] = auction_id_elem.get('value') or auction_id_elem.get('data-auction-id')
+        elif '/auction/' in auction_url:
+            # Try to extract from URL
+            detail_data['external_auction_id'] = auction_url.split('/auction/')[-1].split('/')[0].split('?')[0]
+
+        # Extract full description
+        desc_elem = soup.find('div', class_='auction-description') or soup.find('div', class_='description')
+        if desc_elem:
+            description = desc_elem.get_text(separator=' ', strip=True)
+            detail_data['description'] = description
+
+        # Extract images
+        image_urls = []
+        image_gallery = soup.find('div', class_='auction-images') or soup.find('div', class_='image-gallery')
+        if image_gallery:
+            img_tags = image_gallery.find_all('img')
+            for img in img_tags:
+                img_src = img.get('src') or img.get('data-src')
+                if img_src:
+                    # Convert relative URLs to absolute
+                    if img_src.startswith('/'):
+                        img_src = f"https://www.storageauctions.com{img_src}"
+                    image_urls.append(img_src)
+        detail_data['image_urls'] = image_urls
+
+        # Extract unit size
+        size_elem = soup.find('span', class_='auction-unit-size') or soup.find('div', class_='unit-size')
+        if size_elem:
+            detail_data['unit_size'] = size_elem.get_text(strip=True)
+
+        # Extract facility/location
+        facility_elem = soup.find('div', class_='location') or soup.find('h2', class_='facility-name')
+        if facility_elem:
+            detail_data['facility_name'] = facility_elem.get_text(strip=True)
+
+        # Extract address
+        address_elem = soup.find('address') or soup.find('div', class_='facility-address')
+        if address_elem:
+            address_text = address_elem.get_text(strip=True)
+            detail_data['address_line1'] = address_text.split(',')[0] if ',' in address_text else address_text
+
+            # Parse city, state, zip
+            parts = address_text.split(',')
+            if len(parts) >= 2:
+                detail_data['city'] = parts[-2].strip()
+                state_zip = parts[-1].strip().split()
+                if len(state_zip) >= 2:
+                    detail_data['state'] = state_zip[0]
+                    detail_data['zip_code'] = state_zip[1]
+
+        # Extract current bid
+        bid_elem = soup.find('span', {'id': re.compile('^current_bid_.*')}) or soup.find('div', class_='current-bid')
+        if bid_elem:
+            bid_text = bid_elem.get_text(strip=True).replace('$', '').replace(',', '')
+            try:
+                detail_data['current_bid'] = float(bid_text)
+            except ValueError:
+                pass
+
+        # Extract closing time
+        time_elem = soup.find('div', class_='auction-end-time') or soup.find('span', class_='closes-at')
+        if time_elem:
+            time_str = time_elem.get('data-time') or time_elem.get_text(strip=True)
+            try:
+                # Try to parse ISO format datetime
+                closes_at = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+                detail_data['closes_at'] = closes_at
+            except:
+                pass
+
+        detail_data['source_url'] = auction_url
+
+        print(f"Scraped detail page for auction {detail_data.get('external_auction_id')}: Found {len(image_urls)} images")
+
+        return detail_data
+
     def run_scraper(self, full_scrape: bool = True, dry_run: bool = False) -> Dict:
         """
         Run the scraper and save to database

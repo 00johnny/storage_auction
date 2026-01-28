@@ -514,9 +514,15 @@ def get_auction(auction_id):
 @login_required
 def refetch_auction(auction_id):
     """
-    Re-fetch auction from source (admin only)
+    Re-fetch single auction detail from source (admin only)
 
-    This endpoint triggers a re-scrape of a specific auction from its original source.
+    This endpoint scrapes the specific auction detail page to get:
+    - Full description
+    - Tags
+    - Additional images
+    - Updated bid amounts
+    - Other detail-page-only data
+
     Only accessible to admin users.
     """
     if not current_user.has_role('admin'):
@@ -543,18 +549,28 @@ def refetch_auction(auction_id):
         """, (auction_id,))
 
         auction = cursor.fetchone()
-        cursor.close()
-        conn.close()
 
         if not auction:
+            cursor.close()
+            conn.close()
             return jsonify({
                 'success': False,
                 'error': 'Auction not found'
             }), 404
 
+        # Check if auction has a source URL
+        if not auction['source_url']:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': 'Auction has no source URL to refetch from'
+            }), 400
+
         # Determine which scraper to use based on provider URL
         provider_url = auction['provider_url']
         provider_id = str(auction['provider_id'])
+        auction_source_url = auction['source_url']
 
         if 'bid13.com' in provider_url:
             from scrapers.bid13_scraper import Bid13Scraper
@@ -563,22 +579,103 @@ def refetch_auction(auction_id):
             from scrapers.storageauctions_scraper import StorageAuctionsScraper
             scraper = StorageAuctionsScraper(provider_id)
         else:
+            cursor.close()
+            conn.close()
             return jsonify({
                 'success': False,
                 'error': f'No scraper available for provider: {auction["provider_name"]}'
             }), 400
 
-        # Run a full scrape (this will update existing auctions including this one)
-        # Note: We run a full scrape because individual auction scraping isn't implemented yet
-        result = scraper.run_scraper(full_scrape=True, dry_run=False)
+        # Scrape the specific auction detail page
+        print(f"Refetching auction detail from: {auction_source_url}")
+        detail_data = scraper.scrape_auction_detail(auction_source_url)
+
+        if not detail_data:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                'success': False,
+                'error': 'Failed to scrape auction detail page'
+            }), 500
+
+        # Update the auction in database
+        # Build update query dynamically based on what data we got
+        update_fields = []
+        update_values = []
+
+        if detail_data.get('description'):
+            update_fields.append('description = %s')
+            update_values.append(detail_data['description'])
+
+        if detail_data.get('unit_size'):
+            update_fields.append('unit_size = %s')
+            update_values.append(detail_data['unit_size'])
+
+        if detail_data.get('current_bid'):
+            update_fields.append('current_bid = %s')
+            update_values.append(detail_data['current_bid'])
+
+        if detail_data.get('closes_at'):
+            update_fields.append('closes_at = %s')
+            update_values.append(detail_data['closes_at'])
+
+        if detail_data.get('image_urls'):
+            update_fields.append('image_urls = %s')
+            update_values.append(json.dumps(detail_data['image_urls']))
+
+        # Always update the scraped timestamp
+        update_fields.append('last_scraped_at = CURRENT_TIMESTAMP')
+        update_fields.append('updated_at = CURRENT_TIMESTAMP')
+
+        if update_fields:
+            update_query = f"""
+                UPDATE auctions SET
+                    {', '.join(update_fields)}
+                WHERE auction_id = %s
+            """
+            update_values.append(auction_id)
+
+            cursor.execute(update_query, update_values)
+            conn.commit()
+
+        # Handle tags if present
+        if detail_data.get('tags'):
+            # Remove existing tags for this auction
+            cursor.execute("DELETE FROM auction_tags WHERE auction_id = %s", (auction_id,))
+
+            # Add new tags
+            for tag_name in detail_data['tags']:
+                # Get or create tag
+                cursor.execute("""
+                    INSERT INTO tags (tag_name, color)
+                    VALUES (%s, %s)
+                    ON CONFLICT (tag_name) DO UPDATE SET tag_name = EXCLUDED.tag_name
+                    RETURNING tag_id
+                """, (tag_name, '#3B82F6'))  # Default blue color
+
+                tag_id = cursor.fetchone()['tag_id']
+
+                # Link tag to auction
+                cursor.execute("""
+                    INSERT INTO auction_tags (auction_id, tag_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT DO NOTHING
+                """, (auction_id, tag_id))
+
+            conn.commit()
+
+        cursor.close()
+        conn.close()
 
         return jsonify({
             'success': True,
-            'message': f'Re-fetched auctions from {auction["provider_name"]}',
-            'result': {
-                'auctions_found': result.get('auctions_found', 0),
-                'auctions_added': result.get('auctions_added', 0),
-                'auctions_updated': result.get('auctions_updated', 0)
+            'message': f'Successfully refetched auction from {auction["provider_name"]}',
+            'data': {
+                'description_updated': bool(detail_data.get('description')),
+                'images_found': len(detail_data.get('image_urls', [])),
+                'tags_found': len(detail_data.get('tags', [])),
+                'current_bid': detail_data.get('current_bid'),
+                'fields_updated': len(update_fields) - 2  # Subtract the timestamp fields
             }
         })
 
