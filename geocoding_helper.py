@@ -143,6 +143,9 @@ class SimpleGeocoder:
                 'limit': 1
             }
 
+            # Build full URL for logging
+            full_url = f"{self.base_url}?{'&'.join([f'{k}={v}' for k, v in params.items()])}"
+
             response = requests.get(
                 self.base_url,
                 params=params,
@@ -165,6 +168,7 @@ class SimpleGeocoder:
 
         except Exception as e:
             print(f"Geocoding error for {city}, {state}: {e}")
+            print(f"Full URL: {full_url}")
             return None
     
     def geocode_zipcode(self, zipcode: str) -> Optional[Tuple[float, float]]:
@@ -195,6 +199,9 @@ class SimpleGeocoder:
                 'limit': 1
             }
 
+            # Build full URL for logging
+            full_url = f"{self.base_url}?{'&'.join([f'{k}={v}' for k, v in params.items()])}"
+
             response = requests.get(
                 self.base_url,
                 params=params,
@@ -217,6 +224,7 @@ class SimpleGeocoder:
 
         except Exception as e:
             print(f"Geocoding error for zipcode {zipcode}: {e}")
+            print(f"Full URL: {full_url}")
             return None
 
 
