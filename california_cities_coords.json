@@ -1,0 +1,128 @@
+[
+  {
+    "city": "Sacramento",
+    "state": "CA",
+    "latitude": 38.5815719,
+    "longitude": -121.4943996
+  },
+  {
+    "city": "Cameron Park",
+    "state": "CA",
+    "latitude": 38.6719,
+    "longitude": -121.0232
+  },
+  {
+    "city": "Folsom",
+    "state": "CA",
+    "latitude": 38.6779591,
+    "longitude": -121.1760583
+  },
+  {
+    "city": "Roseville",
+    "state": "CA",
+    "latitude": 38.7521235,
+    "longitude": -121.2880059
+  },
+  {
+    "city": "Elk Grove",
+    "state": "CA",
+    "latitude": 38.4087993,
+    "longitude": -121.3716178
+  },
+  {
+    "city": "Citrus Heights",
+    "state": "CA",
+    "latitude": 38.7071221,
+    "longitude": -121.2810611
+  },
+  {
+    "city": "Rancho Cordova",
+    "state": "CA",
+    "latitude": 38.5890723,
+    "longitude": -121.302728
+  },
+  {
+    "city": "Auburn",
+    "state": "CA",
+    "latitude": 38.8965879,
+    "longitude": -121.0770618
+  },
+  {
+    "city": "Davis",
+    "state": "CA",
+    "latitude": 38.5449065,
+    "longitude": -121.7405167
+  },
+  {
+    "city": "West Sacramento",
+    "state": "CA",
+    "latitude": 38.5804609,
+    "longitude": -121.530234
+  },
+  {
+    "city": "Placerville",
+    "state": "CA",
+    "latitude": 38.7296,
+    "longitude": -120.7985
+  },
+  {
+    "city": "Woodland",
+    "state": "CA",
+    "latitude": 38.6785054,
+    "longitude": -121.7732971
+  },
+  {
+    "city": "Galt",
+    "state": "CA",
+    "latitude": 38.2546547,
+    "longitude": -121.2999359
+  },
+  {
+    "city": "Lincoln",
+    "state": "CA",
+    "latitude": 38.8915756,
+    "longitude": -121.2929956
+  },
+  {
+    "city": "Rocklin",
+    "state": "CA",
+    "latitude": 38.7907339,
+    "longitude": -121.2357828
+  },
+  {
+    "city": "Fair Oaks",
+    "state": "CA",
+    "latitude": 38.6451684,
+    "longitude": -121.2596775
+  },
+  {
+    "city": "Orangevale",
+    "state": "CA",
+    "latitude": 38.6785262,
+    "longitude": -121.2257911
+  },
+  {
+    "city": "Carmichael",
+    "state": "CA",
+    "latitude": 38.6171276,
+    "longitude": -121.3285697
+  },
+  {
+    "city": "North Highlands",
+    "state": "CA",
+    "latitude": 38.6740721,
+    "longitude": -121.3721891
+  },
+  {
+    "city": "Antelope",
+    "state": "CA",
+    "latitude": 38.7085229,
+    "longitude": -121.3460657
+  },
+  {
+    "city": "El Dorado Hills",
+    "state": "CA",
+    "latitude": 38.6884963,
+    "longitude": -121.0852376
+  }
+]
