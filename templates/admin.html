@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal - Storage Auction Platform</title>
+
+    <!-- React and ReactDOM from CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel for JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- App Configuration (injected from Flask) -->
+    <script>
+        // Make React available globally
+        window.React = React;
+        window.useState = React.useState;
+        window.useEffect = React.useEffect;
+        window.useRef = React.useRef;
+
+        window.APP_CONFIG = {
+            API_BASE_URL: "{{ api_base_url }}"
+        };
+    </script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+    const { useState, useEffect } = React;
+    // Normalize API_BASE_URL - remove trailing slash to prevent double slashes
+    const API_BASE_URL = window.APP_CONFIG.API_BASE_URL.replace(/\/$/, '');
+
+    const AdminPortal = () => {
+        const [activeTab, setActiveTab] = useState('providers');
+        const [providers, setProviders] = useState([]);
+        const [facilities, setFacilities] = useState([]);
+        const [scrapeLogs, setScrapeLogs] = useState([]);
+        const [selectedProvider, setSelectedProvider] = useState(null);
+        const [selectedFacility, setSelectedFacility] = useState(null);
+        const [isEditing, setIsEditing] = useState(false);
+        const [isEditingFacility, setIsEditingFacility] = useState(false);
+        const [formData, setFormData] = useState({});
+        const [facilityFormData, setFacilityFormData] = useState({});
+        const [testScrapeResults, setTestScrapeResults] = useState(null);
+        const [showTestResults, setShowTestResults] = useState(false);
+        const [providerFilter, setProviderFilter] = useState(null);
+        const [users, setUsers] = useState([]);
+        const [selectedUser, setSelectedUser] = useState(null);
+        const [isEditingUser, setIsEditingUser] = useState(false);
+        const [userFormData, setUserFormData] = useState({});
+
+        // Fetch providers
+        const fetchProviders = () => {
+            fetch(`${API_BASE_URL}/api/providers?active_only=false`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        setProviders(data.providers);
+                    }
+                });
+        };
+
+        // Fetch facilities
+        const fetchFacilities = () => {
+            fetch(`${API_BASE_URL}/api/facilities`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        setFacilities(data.facilities);
+                    }
+                });
+        };
+
+        // Fetch users
+        const fetchUsers = () => {
+            fetch(`${API_BASE_URL}/api/users`, { credentials: 'include' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        setUsers(data.users);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching users:', error);
+                });
+        };
+
+        useEffect(() => {
+            fetchProviders();
+            fetchFacilities();
+            fetchUsers();
+        }, []);
+
+        const createProvider = () => {
+            setFormData({
+                name: '',
+                city: '',
+                state: 'CA',
+                zip_code: '',
+                website: '',
+                source_url: '',
+                scrape_frequency_hours: 24,
+                is_active: true
+            });
+            setIsEditing(true);
+            setSelectedProvider(null);
+        };
+
+        const editProvider = (provider) => {
+            setFormData(provider);
+            setIsEditing(true);
+            setSelectedProvider(provider);
+        };
+
+        const saveProvider = async () => {
+            try {
+                const url = selectedProvider
+                    ? `${API_BASE_URL}/api/providers/${selectedProvider.provider_id}`
+                    : `${API_BASE_URL}/api/providers`;
+
+                const method = selectedProvider ? 'PUT' : 'POST';
+
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text);
+                    alert(`Server error: Expected JSON but got: ${text.substring(0, 100)}`);
+                    return;
+                }
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(selectedProvider ? 'Provider updated!' : 'Provider created!');
+                    setIsEditing(false);
+                    // Refresh providers list
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Error saving provider: ' + error.message);
+            }
+        };
+
+        const deleteProvider = async (providerId) => {
+            if (!confirm('Are you sure you want to delete this provider?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Provider deleted!');
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                alert('Error deleting provider: ' + error.message);
+            }
+        };
+
+        const viewProviderFacilities = (provider) => {
+            setProviderFilter(provider.provider_id);
+            setActiveTab('facilities');
+        };
+
+        const triggerScrape = async (providerId) => {
+            if (!confirm('Start scraping this provider?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}/scrape`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ full_scrape: true })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    const sr = result.scrape_result;
+                    alert(`Scrape complete!\nFound: ${sr.auctions_found}\nAdded: ${sr.auctions_added}\nUpdated: ${sr.auctions_updated}`);
+                    fetchProviders(); // Refresh provider list
+                } else {
+                    alert('Scrape failed: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Scrape error:', error);
+                alert('Error triggering scrape: ' + error.message);
+            }
+        };
+
+        const testScrape = async (providerId) => {
+            try {
+                setTestScrapeResults({ loading: true });
+                setShowTestResults(true);
+
+                const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}/scrape`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ full_scrape: true, dry_run: true })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    setTestScrapeResults(result.scrape_result);
+                } else {
+                    setTestScrapeResults({ error: result.error });
+                }
+            } catch (error) {
+                console.error('Test scrape error:', error);
+                setTestScrapeResults({ error: error.message });
+            }
+        };
+
+        // Facility management functions
+        const editFacility = (facility) => {
+            setFacilityFormData(facility);
+            setIsEditingFacility(true);
+            setSelectedFacility(facility);
+        };
+
+        const saveFacility = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/facilities/${selectedFacility.facility_id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(facilityFormData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Facility updated successfully!');
+                    setIsEditingFacility(false);
+                    fetchFacilities(); // Refresh facility list
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Error saving facility: ' + error.message);
+            }
+        };
+
+        // User management functions
+        const createUser = () => {
+            setUserFormData({
+                username: '',
+                email: '',
+                password: '',
+                role: 'regular',
+                is_active: true
+            });
+            setIsEditingUser(true);
+            setSelectedUser(null);
+        };
+
+        const editUser = (user) => {
+            setUserFormData({
+                username: user.username,
+                email: user.email,
+                role: user.role,
+                is_active: user.is_active
+            });
+            setIsEditingUser(true);
+            setSelectedUser(user);
+        };
+
+        const saveUser = async () => {
+            try {
+                const url = selectedUser
+                    ? `${API_BASE_URL}/api/users/${selectedUser.user_id}`
+                    : `${API_BASE_URL}/api/users`;
+
+                const method = selectedUser ? 'PUT' : 'POST';
+
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(userFormData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(selectedUser ? 'User updated!' : 'User created!');
+                    setIsEditingUser(false);
+                    fetchUsers();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Error saving user: ' + error.message);
+            }
+        };
+
+        const deleteUser = async (userId) => {
+            if (!confirm('Are you sure you want to delete this user?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('User deleted!');
+                    fetchUsers();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                alert('Error deleting user: ' + error.message);
+            }
+        };
+
+        const deleteFacility = async (facilityId) => {
+            if (!confirm('Are you sure you want to delete this facility? This will fail if the facility has active auctions.')) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/facilities/${facilityId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Facility deleted!');
+                    fetchFacilities();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                alert('Error deleting facility: ' + error.message);
+            }
+        };
+
+        const purgeProviderAuctions = async (providerId, providerName) => {
+            if (!confirm(`⚠️ WARNING: This will DELETE ALL AUCTIONS for ${providerName}!\n\nThis action cannot be undone. You will need to re-scrape to get the auctions back.\n\nAre you absolutely sure?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/providers/${providerId}/auctions`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✓ ${result.message}\n\nYou can now re-scrape this provider to get fresh data.`);
+                    fetchProviders();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Purge error:', error);
+                alert('Error purging auctions: ' + error.message);
+            }
+        };
+
+        const bulkDeleteEmptyFacilities = async () => {
+            // First get count
+            const emptyCount = facilities.filter(f => f.auction_count === 0).length;
+
+            if (emptyCount === 0) {
+                alert('No empty facilities to delete!');
+                return;
+            }
+
+            if (!confirm(`⚠️ WARNING: This will DELETE ${emptyCount} EMPTY FACILITIES!\n\nEmpty facilities are those with 0 active auctions.\n\nThis action cannot be undone.\n\nAre you sure?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/facilities/bulk-delete-empty`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✓ ${result.message}`);
+                    fetchFacilities();
+                    fetchProviders(); // Refresh provider facility counts
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Bulk delete error:', error);
+                alert('Error deleting empty facilities: ' + error.message);
+            }
+        };
+
+        return (
+            <div className="min-h-screen bg-gray-100">
+                <nav className="bg-blue-600 text-white shadow-lg">
+                    <div className="container mx-auto px-4 py-4">
+                        <h1 className="text-2xl font-bold">⚙️ Storage Auction Admin Portal</h1>
+                    </div>
+                </nav>
+
+                <div className="container mx-auto px-4 py-8">
+                    {/* Tabs */}
+                    <div className="mb-6 border-b border-gray-300">
+                        <button
+                            onClick={() => setActiveTab('providers')}
+                            className={`px-6 py-3 font-semibold ${activeTab === 'providers' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+                        >
+                            Providers
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('facilities')}
+                            className={`px-6 py-3 font-semibold ${activeTab === 'facilities' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+                        >
+                            Facilities
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('users')}
+                            className={`px-6 py-3 font-semibold ${activeTab === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+                        >
+                            Users
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('logs')}
+                            className={`px-6 py-3 font-semibold ${activeTab === 'logs' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+                        >
+                            Scrape Logs
+                        </button>
+                        <a href="/" className="px-6 py-3 font-semibold text-gray-600 hover:text-blue-600 float-right">
+                            ← Back to Frontend
+                        </a>
+                    </div>
+
+                    {/* Providers Tab */}
+                    {activeTab === 'providers' && (
+                        <div>
+                            <div className="mb-6 flex justify-between items-center">
+                                <h2 className="text-2xl font-bold">Providers ({providers.length})</h2>
+                                <button
+                                    onClick={createProvider}
+                                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                                >
+                                    ➕ Add Provider
+                                </button>
+                            </div>
+
+                            {/* Provider List */}
+                            <div className="bg-white rounded-lg shadow overflow-hidden">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 border-b">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Active Auctions</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scrape Freq</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {providers.map(provider => (
+                                            <tr key={provider.provider_id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm font-medium text-gray-900">{provider.name}</div>
+                                                    <div className="text-xs text-gray-500">{provider.website || 'No website'}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {provider.city}, {provider.state}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {provider.active_auctions}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {provider.scrape_frequency_hours}h
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 text-xs font-semibold rounded ${provider.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                        {provider.is_active ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm space-x-2">
+                                                    <button
+                                                        onClick={() => editProvider(provider)}
+                                                        className="text-blue-600 hover:text-blue-900"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => viewProviderFacilities(provider)}
+                                                        className="text-indigo-600 hover:text-indigo-900"
+                                                        title="View facilities for this provider"
+                                                    >
+                                                        Facilities ({provider.facility_count || 0})
+                                                    </button>
+                                                    <button
+                                                        onClick={() => testScrape(provider.provider_id)}
+                                                        className="text-purple-600 hover:text-purple-900"
+                                                        title="Test scrape without saving to database"
+                                                    >
+                                                        Test
+                                                    </button>
+                                                    <button
+                                                        onClick={() => triggerScrape(provider.provider_id)}
+                                                        className="text-green-600 hover:text-green-900"
+                                                    >
+                                                        Scrape
+                                                    </button>
+                                                    <button
+                                                        onClick={() => purgeProviderAuctions(provider.provider_id, provider.name)}
+                                                        className="text-orange-600 hover:text-orange-900"
+                                                        title="Delete all auctions for this provider (useful for fixing bad source URLs)"
+                                                    >
+                                                        Purge
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteProvider(provider.provider_id)}
+                                                        className="text-red-600 hover:text-red-900"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Facilities Tab */}
+                    {activeTab === 'facilities' && (
+                        <div>
+                            <div className="mb-6 flex justify-between items-center">
+                                <h2 className="text-2xl font-bold">
+                                    Facilities ({providerFilter ? facilities.filter(f => f.provider_id === providerFilter).length : facilities.length})
+                                    {providerFilter && (
+                                        <span className="text-sm font-normal text-gray-600 ml-2">
+                                            (filtered by provider)
+                                        </span>
+                                    )}
+                                </h2>
+                                <div className="flex gap-2">
+                                    {providerFilter && (
+                                        <button
+                                            onClick={() => setProviderFilter(null)}
+                                            className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                                        >
+                                            Clear Filter
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={bulkDeleteEmptyFacilities}
+                                        className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700"
+                                        title="Delete all facilities with 0 auctions"
+                                    >
+                                        🗑️ Delete Empty ({facilities.filter(f => f.auction_count === 0).length})
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Facility List */}
+                            <div className="bg-white rounded-lg shadow overflow-hidden">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 border-b">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Facility Name</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Address</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Auctions</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {facilities
+                                            .filter(facility => !providerFilter || facility.provider_id === providerFilter)
+                                            .map(facility => (
+                                            <tr key={facility.facility_id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm font-medium text-gray-900">{facility.facility_name}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {facility.provider_name}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-600">
+                                                    {facility.address_line1 || <span className="text-gray-400 italic">No address</span>}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {facility.city}, {facility.state} {facility.zip_code || ''}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {facility.auction_count}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm space-x-2">
+                                                    <button
+                                                        onClick={() => editFacility(facility)}
+                                                        className="text-blue-600 hover:text-blue-900"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteFacility(facility.facility_id)}
+                                                        className="text-red-600 hover:text-red-900"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Users Tab */}
+                    {activeTab === 'users' && (
+                        <div>
+                            <div className="mb-6 flex justify-between items-center">
+                                <h2 className="text-2xl font-bold">Users ({users.length})</h2>
+                                <button
+                                    onClick={createUser}
+                                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                                >
+                                    ➕ Add User
+                                </button>
+                            </div>
+
+                            {/* User List */}
+                            <div className="bg-white rounded-lg shadow overflow-hidden">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 border-b">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Login</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Login Count</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {users.map(user => (
+                                            <tr key={user.user_id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4">
+                                                    <div className="text-sm font-medium text-gray-900">{user.username}</div>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {user.email}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                                                        user.role === 'admin' ? 'bg-purple-100 text-purple-800' :
+                                                        user.role === 'power' ? 'bg-blue-100 text-blue-800' :
+                                                        'bg-gray-100 text-gray-800'
+                                                    }`}>
+                                                        {user.role}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never'}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-900">
+                                                    {user.login_count || 0}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 text-xs font-semibold rounded ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                        {user.is_active ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm space-x-2">
+                                                    <button
+                                                        onClick={() => editUser(user)}
+                                                        className="text-blue-600 hover:text-blue-900"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteUser(user.user_id)}
+                                                        className="text-red-600 hover:text-red-900"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Logs Tab */}
+                    {activeTab === 'logs' && (
+                        <div>
+                            <h2 className="text-2xl font-bold mb-6">Scrape Logs</h2>
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <p className="text-gray-600">Scrape logs viewer - Coming soon!</p>
+                                <p className="text-sm text-gray-500 mt-2">Will display scraping history, errors, and statistics.</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Edit/Create Modal */}
+                {isEditing && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto p-6">
+                            <h3 className="text-xl font-bold mb-4">
+                                {selectedProvider ? 'Edit Provider' : 'Create Provider'}
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Name *</label>
+                                    <input
+                                        type="text"
+                                        value={formData.name || ''}
+                                        onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        required
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">City *</label>
+                                        <input
+                                            type="text"
+                                            value={formData.city || ''}
+                                            onChange={(e) => setFormData({...formData, city: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">State *</label>
+                                        <input
+                                            type="text"
+                                            value={formData.state || ''}
+                                            onChange={(e) => setFormData({...formData, state: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Zip Code *</label>
+                                        <input
+                                            type="text"
+                                            value={formData.zip_code || ''}
+                                            onChange={(e) => setFormData({...formData, zip_code: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Website</label>
+                                    <input
+                                        type="url"
+                                        value={formData.website || ''}
+                                        onChange={(e) => setFormData({...formData, website: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Source URL (for scraping)</label>
+                                    <input
+                                        type="url"
+                                        value={formData.source_url || ''}
+                                        onChange={(e) => setFormData({...formData, source_url: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Scrape Frequency (hours)</label>
+                                    <input
+                                        type="number"
+                                        value={formData.scrape_frequency_hours || 24}
+                                        onChange={(e) => setFormData({...formData, scrape_frequency_hours: parseInt(e.target.value)})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                    />
+                                </div>
+
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.is_active || false}
+                                        onChange={(e) => setFormData({...formData, is_active: e.target.checked})}
+                                        className="h-4 w-4 text-blue-600 rounded"
+                                    />
+                                    <label className="ml-2 block text-sm text-gray-900">Active</label>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 flex justify-end space-x-3">
+                                <button
+                                    onClick={() => setIsEditing(false)}
+                                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={saveProvider}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Edit Facility Modal */}
+                {isEditingFacility && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto p-6">
+                            <h3 className="text-xl font-bold mb-4">
+                                Edit Facility
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Facility Name *</label>
+                                    <input
+                                        type="text"
+                                        value={facilityFormData.facility_name || ''}
+                                        onChange={(e) => setFacilityFormData({...facilityFormData, facility_name: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Address Line 1</label>
+                                    <input
+                                        type="text"
+                                        value={facilityFormData.address_line1 || ''}
+                                        onChange={(e) => setFacilityFormData({...facilityFormData, address_line1: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        placeholder="123 Main Street"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Address Line 2</label>
+                                    <input
+                                        type="text"
+                                        value={facilityFormData.address_line2 || ''}
+                                        onChange={(e) => setFacilityFormData({...facilityFormData, address_line2: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        placeholder="Suite 100"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">City *</label>
+                                        <input
+                                            type="text"
+                                            value={facilityFormData.city || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, city: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">State *</label>
+                                        <input
+                                            type="text"
+                                            value={facilityFormData.state || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, state: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            maxLength="2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Zip Code</label>
+                                        <input
+                                            type="text"
+                                            value={facilityFormData.zip_code || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, zip_code: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Phone</label>
+                                        <input
+                                            type="tel"
+                                            value={facilityFormData.phone || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, phone: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            placeholder="(555) 123-4567"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Email</label>
+                                        <input
+                                            type="email"
+                                            value={facilityFormData.email || ''}
+                                            onChange={(e) => setFacilityFormData({...facilityFormData, email: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            placeholder="facility@example.com"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-4">
+                                    <p className="text-sm text-blue-800">
+                                        <strong>Tip:</strong> Updating the facility will automatically update all associated auctions with the new location information.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 flex justify-end space-x-3">
+                                <button
+                                    onClick={() => setIsEditingFacility(false)}
+                                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={saveFacility}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Test Scrape Results Modal */}
+                {showTestResults && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-screen overflow-y-auto p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xl font-bold">Test Scrape Results</h3>
+                                <button
+                                    onClick={() => setShowTestResults(false)}
+                                    className="text-gray-500 hover:text-gray-700 text-2xl"
+                                >
+                                    ×
+                                </button>
+                            </div>
+
+                            {testScrapeResults && testScrapeResults.loading ? (
+                                <div className="text-center py-8">
+                                    <p className="text-gray-600">Scraping... Please wait...</p>
+                                </div>
+                            ) : testScrapeResults && testScrapeResults.error ? (
+                                <div className="bg-red-50 border border-red-200 rounded p-4">
+                                    <p className="text-red-800 font-semibold">Error:</p>
+                                    <p className="text-red-600">{testScrapeResults.error}</p>
+                                </div>
+                            ) : testScrapeResults && testScrapeResults.auctions ? (
+                                <div>
+                                    <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-4">
+                                        <p className="text-blue-800 font-semibold">Summary:</p>
+                                        <ul className="text-blue-700 mt-2">
+                                            <li>Found: {testScrapeResults.auctions_found} auctions</li>
+                                            <li>Would Add: {testScrapeResults.auctions_added} new auctions</li>
+                                            <li>Would Update: {testScrapeResults.auctions_updated} existing auctions</li>
+                                        </ul>
+                                        <p className="text-sm text-blue-600 mt-2 italic">
+                                            This is a dry run - no changes were saved to the database.
+                                        </p>
+                                    </div>
+
+                                    <h4 className="font-semibold mb-2">Auction Details:</h4>
+                                    <div className="bg-white border border-gray-200 rounded overflow-hidden">
+                                        <div className="overflow-x-auto max-h-96">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-gray-50 border-b sticky top-0">
+                                                    <tr>
+                                                        <th className="px-4 py-2 text-left">Unit</th>
+                                                        <th className="px-4 py-2 text-left">Facility</th>
+                                                        <th className="px-4 py-2 text-left">Location</th>
+                                                        <th className="px-4 py-2 text-left">Size</th>
+                                                        <th className="px-4 py-2 text-left">Current Bid</th>
+                                                        <th className="px-4 py-2 text-left">Closes At</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200">
+                                                    {testScrapeResults.auctions.map((auction, idx) => (
+                                                        <tr key={idx} className="hover:bg-gray-50">
+                                                            <td className="px-4 py-2">{auction.unit_number}</td>
+                                                            <td className="px-4 py-2">{auction.facility_name}</td>
+                                                            <td className="px-4 py-2">{auction.city}, {auction.state}</td>
+                                                            <td className="px-4 py-2">{auction.unit_size || 'N/A'}</td>
+                                                            <td className="px-4 py-2">${auction.current_bid}</td>
+                                                            <td className="px-4 py-2">
+                                                                {new Date(auction.closes_at).toLocaleString()}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            <div className="mt-6 flex justify-end">
+                                <button
+                                    onClick={() => setShowTestResults(false)}
+                                    className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Edit/Create User Modal */}
+                {isEditingUser && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto p-6">
+                            <h3 className="text-xl font-bold mb-4">
+                                {selectedUser ? 'Edit User' : 'Create User'}
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Username *</label>
+                                    <input
+                                        type="text"
+                                        value={userFormData.username || ''}
+                                        onChange={(e) => setUserFormData({...userFormData, username: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        required
+                                        disabled={!!selectedUser}
+                                    />
+                                    {selectedUser && (
+                                        <p className="text-xs text-gray-500 mt-1">Username cannot be changed after creation</p>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Email *</label>
+                                    <input
+                                        type="email"
+                                        value={userFormData.email || ''}
+                                        onChange={(e) => setUserFormData({...userFormData, email: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                        required
+                                    />
+                                </div>
+
+                                {!selectedUser && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Password *</label>
+                                        <input
+                                            type="password"
+                                            value={userFormData.password || ''}
+                                            onChange={(e) => setUserFormData({...userFormData, password: e.target.value})}
+                                            className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                            required
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Role *</label>
+                                    <select
+                                        value={userFormData.role || 'regular'}
+                                        onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
+                                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                                    >
+                                        <option value="regular">Regular</option>
+                                        <option value="power">Power User</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Regular: Basic access | Power: Advanced features | Admin: Full control
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={userFormData.is_active !== false}
+                                        onChange={(e) => setUserFormData({...userFormData, is_active: e.target.checked})}
+                                        className="h-4 w-4 text-blue-600 rounded"
+                                    />
+                                    <label className="ml-2 block text-sm text-gray-900">Active</label>
+                                </div>
+
+                                {selectedUser && (
+                                    <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                                        <p className="text-sm text-yellow-800">
+                                            <strong>Note:</strong> To change password, use the password reset feature (coming soon) or delete and recreate the user.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-6 flex justify-end space-x-3">
+                                <button
+                                    onClick={() => setIsEditingUser(false)}
+                                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={saveUser}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<AdminPortal />);
+    </script>
+</body>
+</html>

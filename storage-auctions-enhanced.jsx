@@ -1,21 +1,124 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Clock, DollarSign, Package, Search, Filter, X, Tag, Eye, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+// Browser-compatible version - no imports needed, using global React
+const { useState, useEffect, useRef } = React;
+
+// Simple icon components using SVG
+const MapPin = () => <span>📍</span>;
+const Clock = () => <span>⏰</span>;
+const DollarSign = () => <span>💰</span>;
+const Package = () => <span>📦</span>;
+const Search = () => <span>🔍</span>;
+const Filter = () => <span>🔽</span>;
+const X = () => <span>✖</span>;
+const Tag = () => <span>🏷️</span>;
+const Eye = () => <span>👁️</span>;
+const ChevronLeft = () => <span>◀</span>;
+const ChevronRight = () => <span>▶</span>;
+const ImageIcon = () => <span>🖼️</span>;
 
 const StorageAuctionApp = () => {
   const [auctions, setAuctions] = useState([]);
   const [filteredAuctions, setFilteredAuctions] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCity, setSelectedCity] = useState('all');
+  const [selectedProvider, setSelectedProvider] = useState('all');
   const [selectedTags, setSelectedTags] = useState([]);
   const [sortBy, setSortBy] = useState('closing-soon');
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'detail'
   const [selectedAuction, setSelectedAuction] = useState(null);
   const [allTags, setAllTags] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
 
-  // Mock data - will be replaced with backend API calls
+  // Fetch data from backend API
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Get API base URL from injected config and normalize (remove trailing slash)
+        const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+
+        // Fetch auctions
+        const auctionsResponse = await fetch(`${apiBaseUrl}/api/auctions`);
+        const auctionsData = await auctionsResponse.json();
+
+        if (auctionsData.success) {
+          // Map backend data to frontend format
+          const mappedAuctions = auctionsData.auctions.map(auction => ({
+            id: auction.auction_id,
+            unitNumber: auction.unit_number,
+            facilityName: auction.facility_name || 'Unknown Facility',
+            provider: auction.provider_name,
+            city: auction.city,
+            state: auction.state,
+            zipCode: auction.zip_code,
+            address: `${auction.address_line1 || ''}, ${auction.city}, ${auction.state} ${auction.zip_code}`,
+            latitude: auction.latitude,
+            longitude: auction.longitude,
+            closingDate: auction.closes_at,
+            currentBid: parseFloat(auction.current_bid) || 0,
+            minimumBid: parseFloat(auction.minimum_bid) || 0,
+            bidIncrement: parseFloat(auction.bid_increment) || 25,
+            unitSize: auction.unit_size,
+            description: auction.description || 'No description available',
+            aiDescription: auction.ai_description || '',
+            imageUrls: auction.image_urls || [],
+            totalBids: auction.total_bids || 0,
+            tags: auction.tags || [],
+            bidHistory: [],
+            sourceUrl: auction.source_url,
+            fullnessRating: auction.fullness_rating
+          }));
+
+          setAuctions(mappedAuctions);
+          setFilteredAuctions(mappedAuctions);
+
+          // Extract all unique tags
+          const tags = [...new Set(mappedAuctions.flatMap(a => a.tags))];
+          setAllTags(tags);
+        }
+
+        // Fetch tags
+        const tagsResponse = await fetch(`${apiBaseUrl}/api/tags`);
+        const tagsData = await tagsResponse.json();
+
+        if (tagsData.success && tagsData.tags.length > 0) {
+          const tagNames = tagsData.tags.map(t => t.tag_name);
+          setAllTags(tagNames);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        // Fall back to empty state
+        setAuctions([]);
+        setFilteredAuctions([]);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Check if user is authenticated (for admin features)
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+        const response = await fetch(`${apiBaseUrl}/api/auth/check`, {
+          credentials: 'include'
+        });
+        const data = await response.json();
+        if (data.authenticated) {
+          setCurrentUser(data.user);
+        }
+      } catch (error) {
+        console.error('Error checking authentication:', error);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // OLD MOCK DATA BELOW (keeping for reference, but not used)
+  useEffect(() => {
+    return; // This effect is disabled
     const mockAuctions = [
       {
         id: 1,
@@ -242,6 +345,11 @@ const StorageAuctionApp = () => {
       filtered = filtered.filter(auction => auction.city === selectedCity);
     }
 
+    // Provider filter
+    if (selectedProvider !== 'all') {
+      filtered = filtered.filter(auction => auction.provider === selectedProvider);
+    }
+
     // Tag filter
     if (selectedTags.length > 0) {
       filtered = filtered.filter(auction =>
@@ -259,7 +367,7 @@ const StorageAuctionApp = () => {
     }
 
     setFilteredAuctions(filtered);
-  }, [searchTerm, selectedCity, selectedTags, sortBy, auctions]);
+  }, [searchTerm, selectedCity, selectedProvider, selectedTags, sortBy, auctions]);
 
   const getTimeRemaining = (closingDate) => {
     const now = new Date();
@@ -286,6 +394,7 @@ const StorageAuctionApp = () => {
   };
 
   const cities = ['all', ...new Set(auctions.map(a => a.city))];
+  const providers = ['all', ...new Set(auctions.map(a => a.provider).filter(p => p))];
 
   // Detail Page Component
   const AuctionDetailPage = ({ auction }) => {
@@ -433,7 +542,7 @@ const StorageAuctionApp = () => {
               <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 sticky top-8">
                 <div className="mb-6">
                   <h1 className="text-2xl font-bold text-slate-900 mb-2">
-                    Unit {auction.unitNumber}
+                    {auction.facilityName} - {auction.unitNumber}
                   </h1>
                   <div className="flex items-center gap-2 flex-wrap mb-4">
                     {auction.tags.map(tag => (
@@ -445,6 +554,18 @@ const StorageAuctionApp = () => {
                   <span className="bg-slate-100 text-slate-700 text-sm font-medium px-3 py-1.5 rounded-lg">
                     {auction.unitSize}
                   </span>
+                  {auction.fullnessRating && (
+                    <div className="mt-3">
+                      <p className="text-xs text-slate-600 mb-1">Estimated Fullness</p>
+                      <div className="flex items-center gap-1">
+                        {[1,2,3,4,5].map(star => (
+                          <span key={star} className={star <= auction.fullnessRating ? 'text-yellow-400' : 'text-gray-300'}>
+                            ⭐
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Current Bid */}
@@ -466,39 +587,217 @@ const StorageAuctionApp = () => {
                   </p>
                 </div>
 
-                {/* Bid Form */}
+                {/* Bidding Info */}
                 <div className="border-t border-slate-200 pt-6">
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Your Bid Amount
-                    </label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <input
-                        type="number"
-                        value={bidAmount}
-                        onChange={(e) => setBidAmount(e.target.value)}
-                        placeholder={`Min: ${auction.currentBid + auction.bidIncrement}`}
-                        className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500 mt-2">
-                      Minimum bid: ${auction.currentBid + auction.bidIncrement} (increment: ${auction.bidIncrement})
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-blue-800">
+                      To place a bid on this auction, visit the auction source website.
                     </p>
                   </div>
 
-                  <button
-                    onClick={handlePlaceBid}
-                    disabled={!bidAmount || parseFloat(bidAmount) < auction.currentBid + auction.bidIncrement}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors"
-                  >
-                    Place Bid
-                  </button>
+                  {auction.sourceUrl && (
+                    <a
+                      href={auction.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span>🔗</span>
+                      View on Source Site
+                    </a>
+                  )}
 
                   <button className="w-full mt-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-3 rounded-lg transition-colors">
                     Add to Watchlist
                   </button>
+
+                  {/* Admin Tools (only visible to admins) */}
+                  {currentUser && currentUser.role === 'admin' && (
+                    <div className="mt-8 pt-6 border-t border-slate-200">
+                      <h3 className="font-semibold text-sm text-slate-700 mb-3">Admin Tools</h3>
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Re-fetch this auction detail from source?\n\nThis will update:\n• Full description\n• Tags/categories\n• Images\n• Current bid\n• Other detail-page data')) return;
+
+                          try {
+                            const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+                            const response = await fetch(`${apiBaseUrl}/api/auctions/${auction.id}/refetch`, {
+                              method: 'POST',
+                              credentials: 'include'
+                            });
+                            const result = await response.json();
+
+                            if (result.success) {
+                              const data = result.data;
+                              alert(`✓ ${result.message}\n\n` +
+                                    `Description: ${data.description_updated ? 'Updated' : 'No change'}\n` +
+                                    `Images: ${data.images_found} found\n` +
+                                    `Tags: ${data.tags_found} found\n` +
+                                    `Fields updated: ${data.fields_updated}\n` +
+                                    `Current bid: $${data.current_bid || 'N/A'}`);
+                              window.location.reload();
+                            } else {
+                              alert('Error: ' + result.error);
+                            }
+                          } catch (error) {
+                            alert('Error re-fetching auction: ' + error.message);
+                          }
+                        }}
+                        className="w-full bg-slate-600 hover:bg-slate-700 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <span>🔄</span>
+                        Re-fetch Detail from Source
+                      </button>
+                    </div>
+                  )}
                 </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  };
+
+  // My Account Page Component
+  const MyAccountPage = () => {
+    const [formData, setFormData] = useState({
+      username: currentUser?.username || '',
+      email: currentUser?.email || '',
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
+    const [message, setMessage] = useState('');
+
+    const handleSave = async () => {
+      try {
+        const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+
+        // Update email
+        const updateData = { email: formData.email };
+
+        // Include password if changing
+        if (formData.newPassword) {
+          if (formData.newPassword !== formData.confirmPassword) {
+            alert('New passwords do not match!');
+            return;
+          }
+          if (formData.newPassword.length < 6) {
+            alert('Password must be at least 6 characters!');
+            return;
+          }
+          updateData.password = formData.newPassword;
+        }
+
+        const response = await fetch(`${apiBaseUrl}/api/users/${currentUser.user_id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(updateData)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setMessage('Profile updated successfully!');
+          setFormData({...formData, currentPassword: '', newPassword: '', confirmPassword: ''});
+          setTimeout(() => window.location.reload(), 1500);
+        } else {
+          alert('Error: ' + result.error);
+        }
+      } catch (error) {
+        alert('Error updating profile: ' + error.message);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+        <header className="bg-white shadow-sm border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <button
+              onClick={() => setViewMode('list')}
+              className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              Back to Listings
+            </button>
+          </div>
+        </header>
+
+        <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+            <h1 className="text-2xl font-bold text-slate-900 mb-6">My Account</h1>
+
+            {message && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                <p className="text-green-800">{message}</p>
+              </div>
+            )}
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Username</label>
+                <input
+                  type="text"
+                  value={formData.username}
+                  disabled
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 bg-slate-100 text-slate-600"
+                />
+                <p className="text-xs text-slate-500 mt-1">Username cannot be changed</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="border-t border-slate-200 pt-6">
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">Change Password</h2>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">New Password</label>
+                    <input
+                      type="password"
+                      value={formData.newPassword}
+                      onChange={(e) => setFormData({...formData, newPassword: e.target.value})}
+                      placeholder="Leave blank to keep current password"
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Confirm New Password</label>
+                    <input
+                      type="password"
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                      placeholder="Confirm new password"
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  onClick={handleSave}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors"
+                >
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className="px-6 border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-3 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
@@ -512,6 +811,10 @@ const StorageAuctionApp = () => {
     return <AuctionDetailPage auction={selectedAuction} />;
   }
 
+  if (viewMode === 'account') {
+    return <MyAccountPage />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
@@ -522,9 +825,41 @@ const StorageAuctionApp = () => {
               <h1 className="text-3xl font-bold text-slate-900">Storage Auctions</h1>
               <p className="text-slate-600 mt-1">Find storage unit auctions in California</p>
             </div>
-            <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg">
-              <MapPin className="w-5 h-5 text-blue-600" />
-              <span className="font-semibold text-blue-900">California</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg">
+                <MapPin className="w-5 h-5 text-blue-600" />
+                <span className="font-semibold text-blue-900">California</span>
+              </div>
+              {currentUser ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewMode('account')}
+                    className="text-slate-700 hover:text-blue-600 font-medium"
+                  >
+                    👤 {currentUser.username}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+                      await fetch(`${apiBaseUrl}/api/auth/logout`, {
+                        method: 'POST',
+                        credentials: 'include'
+                      });
+                      window.location.href = '/';
+                    }}
+                    className="text-slate-600 hover:text-slate-900 text-sm"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <a
+                  href="/login"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                  Login
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -566,6 +901,22 @@ const StorageAuctionApp = () => {
                 {cities.map(city => (
                   <option key={city} value={city}>
                     {city === 'all' ? 'All Cities' : city}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Provider Filter */}
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <select
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+              >
+                {providers.map(provider => (
+                  <option key={provider} value={provider}>
+                    {provider === 'all' ? 'All Providers' : provider}
                   </option>
                 ))}
               </select>
@@ -643,7 +994,15 @@ const StorageAuctionApp = () => {
                 {/* Header */}
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-bold text-lg text-slate-900">Unit {auction.unitNumber}</h3>
+                    <h3
+                      onClick={() => {
+                        setSelectedAuction(auction);
+                        setViewMode('detail');
+                      }}
+                      className="font-bold text-lg text-slate-900 cursor-pointer hover:text-blue-600 transition-colors"
+                    >
+                      {auction.facilityName} - {auction.unitNumber}
+                    </h3>
                     <p className="text-sm text-slate-600">{auction.provider}</p>
                   </div>
                   <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
@@ -700,9 +1059,8 @@ const StorageAuctionApp = () => {
                     setSelectedAuction(auction);
                     setViewMode('detail');
                   }}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors"
                 >
-                  <Eye className="w-4 h-4" />
                   View Details
                 </button>
               </div>
@@ -722,4 +1080,4 @@ const StorageAuctionApp = () => {
   );
 };
 
-export default StorageAuctionApp;
+// No export needed - component is globally available in browser
