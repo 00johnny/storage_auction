@@ -108,12 +108,27 @@ def backfill_zipcodes(fix_mode: bool = False, limit: int = None):
                 result = results[0]
                 address = result.get('address', {})
 
+                # Debug: show what we got
+                if not address:
+                    print(f"✗ No address details in result")
+                    print(f"   Display: {result.get('display_name', 'N/A')[:50]}")
+                    stats['failed'] += 1
+                    continue
+
                 # Try to extract zipcode from various fields
                 new_zip = (
                     address.get('postcode') or
                     address.get('postal_code') or
                     address.get('zipcode')
                 )
+
+                # Debug output if no zipcode found
+                if not new_zip:
+                    print(f"✗ No zipcode in address")
+                    print(f"   Display: {result.get('display_name', 'N/A')[:50]}")
+                    print(f"   Available fields: {list(address.keys())}")
+                    stats['failed'] += 1
+                    continue
 
                 if new_zip:
                     # Clean up zipcode (might have extra info like "95814-2103")
