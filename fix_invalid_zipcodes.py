@@ -39,12 +39,14 @@ def fix_invalid_zipcodes(fix_mode: bool = False):
     cursor = conn.cursor()
 
     # Find invalid zipcodes
-    invalid_patterns = ['00000', '99999', 'N/A', 'Unknown', '']
+    invalid_patterns = ['00000', '99999', 'N/A', 'Unknown']
 
     cursor.execute("""
         SELECT auction_id, facility_name, city, state, zip_code
         FROM auctions
-        WHERE zip_code = ANY(%s) OR zip_code IS NULL OR LENGTH(TRIM(zip_code)) < 5
+        WHERE zip_code = ANY(%s)
+           OR zip_code = ''
+           OR (zip_code IS NOT NULL AND LENGTH(TRIM(zip_code)) < 5)
         ORDER BY city, state
     """, (invalid_patterns,))
 
@@ -80,18 +82,18 @@ def fix_invalid_zipcodes(fix_mode: bool = False):
         print("\n⚠️  FIXING INVALID ZIP CODES...")
         cursor.execute("""
             UPDATE auctions
-            SET zip_code = NULL
-            WHERE zip_code = ANY(%s) OR LENGTH(TRIM(zip_code)) < 5
+            SET zip_code = ''
+            WHERE zip_code = ANY(%s) OR (zip_code IS NOT NULL AND LENGTH(TRIM(zip_code)) < 5)
         """, (invalid_patterns,))
 
         updated = cursor.rowcount
         conn.commit()
 
-        print(f"✓ Set {updated} invalid ZIP codes to NULL")
-        print("\nNote: Geocoding will now use city/state for these auctions")
+        print(f"✓ Set {updated} invalid ZIP codes to empty string")
+        print("\nNote: Geocoding will use city/state for these auctions (empty zipcode)")
     else:
         print("\n💡 To fix these, run: python fix_invalid_zipcodes.py --fix")
-        print("\nThis will set invalid ZIP codes to NULL so geocoding")
+        print("\nThis will set invalid ZIP codes to empty string so geocoding")
         print("will fallback to city/state (which is more reliable)")
 
     cursor.close()

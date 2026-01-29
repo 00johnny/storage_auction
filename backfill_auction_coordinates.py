@@ -105,9 +105,9 @@ def backfill_coordinates(limit: int = None, dry_run: bool = False):
             coords = None
 
             # Validate and clean zip code
-            if zip_code:
+            if zip_code and zip_code.strip():
                 # Skip invalid zipcodes
-                if zip_code in ['00000', '99999', 'N/A', 'Unknown']:
+                if zip_code in ['00000', '99999', 'N/A', 'Unknown', '']:
                     print(f"(Invalid ZIP: {zip_code}, using city/state)", end=" ")
                     zip_code = None
                 else:
