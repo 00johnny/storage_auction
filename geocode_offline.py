@@ -50,7 +50,7 @@ def geocode_locations():
         # Try zipcode first if available
         if zipcode:
             try:
-                time.sleep(1)  # Rate limiting
+                time.sleep(1.5)  # Rate limiting (1.5 seconds for safety)
                 params = {
                     'postalcode': zipcode,
                     'country': 'United States',
@@ -69,7 +69,7 @@ def geocode_locations():
         # Fallback to city/state
         if not coords:
             try:
-                time.sleep(1)  # Rate limiting
+                time.sleep(1.5)  # Rate limiting (1.5 seconds for safety)
                 params = {
                     'city': city,
                     'state': state,

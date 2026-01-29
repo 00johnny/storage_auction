@@ -28,7 +28,7 @@ class SimpleGeocoder:
             'User-Agent': 'StorageAuctionPlatform/1.0'
         }
         self._last_request_time = 0
-        self._min_request_interval = 1.0  # Nominatim requires 1 second between requests
+        self._min_request_interval = 1.5  # 1.5 seconds between requests (safer than minimum 1.0)
         self.db_connection = db_connection
 
     def _check_cache(self, location_type: str, location_key: str) -> Optional[Tuple[float, float]]:
