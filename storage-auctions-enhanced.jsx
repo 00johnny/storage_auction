@@ -29,13 +29,52 @@ const StorageAuctionApp = () => {
   const [selectedAuction, setSelectedAuction] = useState(null);
   const [allTags, setAllTags] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
+
+  // Load saved filters from localStorage when user logs in
+  useEffect(() => {
+    if (currentUser) {
+      const savedFilters = localStorage.getItem(`filters_${currentUser.user_id}`);
+      if (savedFilters) {
+        try {
+          const filters = JSON.parse(savedFilters);
+          setSearchTerm(filters.searchTerm || '');
+          setSelectedCity(filters.selectedCity || 'all');
+          setSelectedProvider(filters.selectedProvider || 'all');
+          setSelectedTags(filters.selectedTags || []);
+          setSortBy(filters.sortBy || 'closing-soon');
+          setZipcode(filters.zipcode || '');
+          setMaxDistance(filters.maxDistance || '');
+        } catch (e) {
+          console.error('Error loading saved filters:', e);
+        }
+      }
+    }
+  }, [currentUser]);
+
+  // Save filters to localStorage when they change (if user logged in)
+  useEffect(() => {
+    if (currentUser) {
+      const filters = {
+        searchTerm,
+        selectedCity,
+        selectedProvider,
+        selectedTags,
+        sortBy,
+        zipcode,
+        maxDistance
+      };
+      localStorage.setItem(`filters_${currentUser.user_id}`, JSON.stringify(filters));
+    }
+  }, [currentUser, searchTerm, selectedCity, selectedProvider, selectedTags, sortBy, zipcode, maxDistance]);
 
   // Fetch data from backend API
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setIsLoading(true);
         // Get API base URL from injected config and normalize (remove trailing slash)
         const apiBaseUrl = (window.APP_CONFIG?.API_BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -108,6 +147,8 @@ const StorageAuctionApp = () => {
         // Fall back to empty state
         setAuctions([]);
         setFilteredAuctions([]);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -308,25 +349,65 @@ const StorageAuctionApp = () => {
 
           mapInstanceRef.current = map;
 
-          // Add markers for all auctions
+          // Group auctions by facility (same location = same facility)
+          const facilities = {};
           filteredAuctions.forEach(auction => {
             if (auction.latitude && auction.longitude) {
-              const marker = window.L.marker([auction.latitude, auction.longitude]).addTo(map);
-              marker.bindPopup(`
-                <div style="min-width: 200px;">
-                  <strong>Unit ${auction.unitNumber}</strong><br/>
-                  ${auction.provider}<br/>
-                  ${auction.city}, ${auction.state}<br/>
-                  <strong>Current Bid: $${auction.currentBid}</strong><br/>
-                  <small>${auction.unitSize}</small>
-                </div>
-              `);
-              
-              marker.on('click', () => {
-                setSelectedAuction(auction);
-                setViewMode('detail');
-              });
+              const key = `${auction.latitude},${auction.longitude}`;
+              if (!facilities[key]) {
+                facilities[key] = {
+                  lat: auction.latitude,
+                  lon: auction.longitude,
+                  facilityName: auction.facilityName,
+                  city: auction.city,
+                  state: auction.state,
+                  provider: auction.provider,
+                  auctions: []
+                };
+              }
+              facilities[key].auctions.push(auction);
             }
+          });
+
+          // Add one marker per facility
+          Object.values(facilities).forEach(facility => {
+            const marker = window.L.marker([facility.lat, facility.lon]).addTo(map);
+
+            // Build popup with facility info and auction list
+            const auctionCount = facility.auctions.length;
+            const auctionList = facility.auctions
+              .slice(0, 5)  // Show max 5 auctions
+              .map(a => `<li>Unit ${a.unitNumber} - $${a.currentBid} (${a.unitSize})</li>`)
+              .join('');
+            const moreText = auctionCount > 5 ? `<p><em>...and ${auctionCount - 5} more</em></p>` : '';
+
+            marker.bindPopup(`
+              <div style="min-width: 250px;">
+                <strong>${facility.facilityName}</strong><br/>
+                <small>${facility.provider}</small><br/>
+                ${facility.city}, ${facility.state}<br/>
+                <hr style="margin: 8px 0;"/>
+                <strong>${auctionCount} Auction${auctionCount > 1 ? 's' : ''}</strong>
+                <ul style="margin: 5px 0; padding-left: 20px; font-size: 0.9em;">
+                  ${auctionList}
+                </ul>
+                ${moreText}
+                <button
+                  onclick="window.dispatchEvent(new CustomEvent('viewFacility', {detail: {facilityName: '${facility.facilityName}'}}))"
+                  style="margin-top: 8px; padding: 4px 8px; background: #3B82F6; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                >
+                  View All Auctions
+                </button>
+              </div>
+            `);
+
+            // Click marker to view first auction in detail
+            marker.on('click', () => {
+              if (facility.auctions.length > 0) {
+                setSelectedAuction(facility.auctions[0]);
+                setViewMode('detail');
+              }
+            });
           });
         }
       };
@@ -1071,7 +1152,16 @@ const StorageAuctionApp = () => {
           </div>
 
           <div className="mt-4 flex items-center justify-between text-sm text-slate-600 border-t border-slate-200 pt-4">
-            <span>{filteredAuctions.length} auctions found</span>
+            <span>
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></span>
+                  Loading auctions...
+                </span>
+              ) : (
+                `${filteredAuctions.length} auctions found`
+              )}
+            </span>
             {selectedTags.length > 0 && (
               <span className="text-blue-600">
                 Filtered by: {selectedTags.join(', ')}
@@ -1080,8 +1170,22 @@ const StorageAuctionApp = () => {
           </div>
         </div>
 
+        {/* Loading Indicator */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12 bg-white rounded-xl shadow-sm border border-slate-200 mb-8">
+            <div className="text-center">
+              <div className="animate-spin inline-block w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mb-4"></div>
+              <p className="text-slate-600 font-medium">
+                {zipcode ? 'Calculating distances...' : 'Loading auctions...'}
+              </p>
+              {zipcode && <p className="text-sm text-slate-500 mt-2">This may take a moment for distance-based searches</p>}
+            </div>
+          </div>
+        )}
+
         {/* Auction Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {!isLoading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredAuctions.map(auction => (
             <div
               key={auction.id}
@@ -1173,10 +1277,12 @@ const StorageAuctionApp = () => {
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        )}
 
-        {filteredAuctions.length === 0 && (
-          <div className="text-center py-12">
+        {/* Empty State */}
+        {!isLoading && filteredAuctions.length === 0 && (
+          <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-slate-200">
             <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-700 mb-2">No auctions found</h3>
             <p className="text-slate-500">Try adjusting your search or filters</p>
